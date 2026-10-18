@@ -2,7 +2,15 @@
 $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path "$PSScriptRoot\..\.."
-$env:PATH = "C:\Users\AsmKhalid-HP15\.cargo\bin;C:\Users\AsmKhalid-HP15\AppData\Local\Microsoft\WinGet\Packages\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\mingw64\bin;$env:PATH"
+
+# Ensure cargo and MinGW-w64 are in PATH if installed in standard locations
+if ($env:USERPROFILE -and (Test-Path "$env:USERPROFILE\.cargo\bin")) {
+    $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+}
+$wingetMinGW = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\mingw64\bin"
+if (Test-Path $wingetMinGW) {
+    $env:PATH = "$wingetMinGW;$env:PATH"
+}
 
 Write-Host "=== 1. Building BornoMala Core Static Library (Release) ===" -ForegroundColor Cyan
 Push-Location $root
@@ -28,8 +36,10 @@ Write-Host "Using static library: $staticLib" -ForegroundColor Green
 $gppCmd = Get-Command "g++.exe" -ErrorAction SilentlyContinue
 if ($gppCmd) {
     $gpp = $gppCmd.Source
+} elseif (Test-Path "$wingetMinGW\g++.exe") {
+    $gpp = "$wingetMinGW\g++.exe"
 } else {
-    $gpp = "C:\Users\AsmKhalid-HP15\AppData\Local\Microsoft\WinGet\Packages\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\mingw64\bin\g++.exe"
+    throw "g++.exe not found in PATH or standard MinGW-w64 locations. Please ensure MinGW-w64 GCC is installed."
 }
 Write-Host "Using C++ compiler: $gpp" -ForegroundColor Green
 

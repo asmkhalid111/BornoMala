@@ -285,9 +285,9 @@ export function App() {
           <div style={{ fontSize: "13px", lineHeight: "1.5" }}>
             <strong style={{ color: "var(--accent-amber)" }}>Web Browser View Detected:</strong>
             <p style={{ color: "var(--text-secondary)", marginTop: "2px" }}>
-              You are currently viewing this page in an external web browser. The native Rust engine (<code>borno-core</code>)
+              You are currently viewing this page in an external web browser. The native Rust engine (<code>bornomala-core</code>)
               connects directly to the <strong>native desktop application window</strong>. Please switch to the running{" "}
-              <strong style={{ color: "#ffffff" }}>Borno Bangla Input — Sandbox (M4)</strong> window on your Windows taskbar to test live typing and verify the real Rust core.
+              <strong style={{ color: "#ffffff" }}>BornoMala</strong> window on your Windows taskbar to test live typing and verify the real Rust core.
             </p>
           </div>
         </div>

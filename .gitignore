@@ -2,6 +2,7 @@
 /target/
 **/target/
 **/*.rs.bk
+.cargo/config.toml
 
 # Node.js
 node_modules/

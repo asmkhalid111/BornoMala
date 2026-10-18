@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master, main]
   pull_request:
-    branches: [main]
+    branches: [master, main]
 
 jobs:
   core-tests:
@@ -20,7 +20,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Run Core Library Tests
-        run: cargo test -p borno-core
+        run: cargo test -p bornomala-core
 
   frontend-build:
     name: Frontend Build & Typecheck
