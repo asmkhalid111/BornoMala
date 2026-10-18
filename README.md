@@ -180,6 +180,16 @@ See [`ROADMAP.md`](./ROADMAP.md) for the complete engineering pathway.
 
 ---
 
+## Contributing & Collaboration
+
+BornoMala is currently in an **active foundational build phase** led by the creator following the structured milestones in [`ROADMAP.md`](./ROADMAP.md).
+
+- **Forking & Experimenting:** You are warmly encouraged to fork the repository and experiment freely under our open-source licenses!
+- **Direct Contributions:** To prevent conflicting architectural shifts and ensure your time is valued, please reach out first before submitting large pull requests. Check our [**Contributing Guidelines (`CONTRIBUTING.md`)**](./CONTRIBUTING.md) for details on roadmap alignment, proposal discussions, and collaborator policies.
+- **Contact:** You can open a GitHub Discussion / Issue or contact the author at **`asm.khalid111@gmail.com`**.
+
+---
+
 ## License
 
 This project is dual-licensed under either:
