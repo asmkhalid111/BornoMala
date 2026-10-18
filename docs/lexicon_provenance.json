@@ -1,0 +1,26 @@
+{
+  "dataset_name": "Leipzig Corpora Collection (Bengali)",
+  "source_archive": "ben_news_2020_300K.tar.gz",
+  "source_url": "https://downloads.wortschatz-leipzig.de/corpora/ben_news_2020_300K.tar.gz",
+  "source_sha256": "7624300acee975a4344510bdacb000dd63c6709aa76ef3e922805c031bc22b49",
+  "license": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "attribution": "Leipzig Corpora Collection: Bengali News 2020 (300K sentences). Universität Leipzig.",
+  "hunspell_validation_oracle": {
+    "source_url": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bn_BD/bn_BD.dic",
+    "license": "GPLv2+ / LGPLv2.1+ / MPL 1.1 tri-license",
+    "usage": "Offline validation oracle only; zero hunspell data redistributed in runtime binary",
+    "verified_word_count": 15822,
+    "verified_percentage": "39.55%"
+  },
+  "preprocessing_stats": {
+    "raw_entries_count": 184320,
+    "valid_bengali_tokens": 126064,
+    "unique_nfc_words": 119067,
+    "words_freq_ge_3": 44766,
+    "final_vocabulary_count": 40000,
+    "binary_artifact": "crates/borno-core/data/lexicon.bin",
+    "binary_size_bytes": 1116596,
+    "binary_sha256": "97db33d26ec1a5b358103f5945f95b0a7d9610db979991f1f7a47fe94f383288"
+  }
+}

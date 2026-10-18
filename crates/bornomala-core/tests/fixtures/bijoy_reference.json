@@ -1,0 +1,273 @@
+{
+  "schema_version": "1.0.0",
+  "metadata": {
+    "id": "bijoy",
+    "name": "Bijoy-Compatible",
+    "version": "1.0.0",
+    "standard": "OmicronLab Avro Keyboard Bijoy-compatible Unicode baseline",
+    "author": "Ananda Computers (Geometry) / OmicronLab (Unicode Mapping)",
+    "description": "Traditional Bijoy geometry adapted for standard Unicode code point emission",
+    "supported_layers": [
+      "Normal",
+      "Shift"
+    ]
+  },
+  "rules": {
+    "link_key": "KeyG",
+    "supports_link_vowel_composition": true,
+    "link_vowel_map": {
+      "া": "আ",
+      "ি": "ই",
+      "ী": "ঈ",
+      "ু": "উ",
+      "ূ": "ঊ",
+      "ৃ": "ঋ",
+      "ে": "এ",
+      "ৈ": "ঐ",
+      "ো": "ও",
+      "ৌ": "ঔ"
+    }
+  },
+  "keys": {
+    "Backquote": {
+      "unshifted": "`",
+      "shifted": "~",
+      "altgr": null
+    },
+    "Digit1": {
+      "unshifted": "১",
+      "shifted": "!",
+      "altgr": null
+    },
+    "Digit2": {
+      "unshifted": "২",
+      "shifted": "@",
+      "altgr": null
+    },
+    "Digit3": {
+      "unshifted": "৩",
+      "shifted": "#",
+      "altgr": null
+    },
+    "Digit4": {
+      "unshifted": "৪",
+      "shifted": "৳",
+      "altgr": null
+    },
+    "Digit5": {
+      "unshifted": "৫",
+      "shifted": "%",
+      "altgr": null
+    },
+    "Digit6": {
+      "unshifted": "৬",
+      "shifted": "^",
+      "altgr": null
+    },
+    "Digit7": {
+      "unshifted": "৭",
+      "shifted": "ঁ",
+      "altgr": null
+    },
+    "Digit8": {
+      "unshifted": "৮",
+      "shifted": "*",
+      "altgr": null
+    },
+    "Digit9": {
+      "unshifted": "৯",
+      "shifted": "(",
+      "altgr": null
+    },
+    "Digit0": {
+      "unshifted": "০",
+      "shifted": ")",
+      "altgr": null
+    },
+    "Minus": {
+      "unshifted": "-",
+      "shifted": "_",
+      "altgr": null
+    },
+    "Equal": {
+      "unshifted": "=",
+      "shifted": "+",
+      "altgr": null
+    },
+    "KeyQ": {
+      "unshifted": "ঙ",
+      "shifted": "ং",
+      "altgr": null
+    },
+    "KeyW": {
+      "unshifted": "য",
+      "shifted": "য়",
+      "altgr": null
+    },
+    "KeyE": {
+      "unshifted": "ড",
+      "shifted": "ঢ",
+      "altgr": null
+    },
+    "KeyR": {
+      "unshifted": "প",
+      "shifted": "ফ",
+      "altgr": null
+    },
+    "KeyT": {
+      "unshifted": "ট",
+      "shifted": "ঠ",
+      "altgr": null
+    },
+    "KeyY": {
+      "unshifted": "চ",
+      "shifted": "ছ",
+      "altgr": null
+    },
+    "KeyU": {
+      "unshifted": "জ",
+      "shifted": "ঝ",
+      "altgr": null
+    },
+    "KeyI": {
+      "unshifted": "হ",
+      "shifted": "ঞ",
+      "altgr": null
+    },
+    "KeyO": {
+      "unshifted": "গ",
+      "shifted": "ঘ",
+      "altgr": null
+    },
+    "KeyP": {
+      "unshifted": "ড়",
+      "shifted": "ঢ়",
+      "altgr": null
+    },
+    "BracketLeft": {
+      "unshifted": "[",
+      "shifted": "{",
+      "altgr": null
+    },
+    "BracketRight": {
+      "unshifted": "]",
+      "shifted": "}",
+      "altgr": null
+    },
+    "Backslash": {
+      "unshifted": "\\",
+      "shifted": "|",
+      "altgr": null
+    },
+    "KeyA": {
+      "unshifted": "ৃ",
+      "shifted": "ঋ",
+      "altgr": null
+    },
+    "KeyS": {
+      "unshifted": "ু",
+      "shifted": "ূ",
+      "altgr": null
+    },
+    "KeyD": {
+      "unshifted": "ি",
+      "shifted": "ী",
+      "altgr": null
+    },
+    "KeyF": {
+      "unshifted": "া",
+      "shifted": "অ",
+      "altgr": null
+    },
+    "KeyG": {
+      "unshifted": "্",
+      "shifted": "ঽ",
+      "altgr": null
+    },
+    "KeyH": {
+      "unshifted": "ব",
+      "shifted": "ভ",
+      "altgr": null
+    },
+    "KeyJ": {
+      "unshifted": "ক",
+      "shifted": "খ",
+      "altgr": null
+    },
+    "KeyK": {
+      "unshifted": "ত",
+      "shifted": "থ",
+      "altgr": null
+    },
+    "KeyL": {
+      "unshifted": "দ",
+      "shifted": "ধ",
+      "altgr": null
+    },
+    "Semicolon": {
+      "unshifted": "ম",
+      "shifted": "ণ",
+      "altgr": null
+    },
+    "Quote": {
+      "unshifted": "ন",
+      "shifted": "ষ",
+      "altgr": null
+    },
+    "KeyZ": {
+      "unshifted": "্র",
+      "shifted": "্য",
+      "altgr": null
+    },
+    "KeyX": {
+      "unshifted": "ো",
+      "shifted": "ৌ",
+      "altgr": null
+    },
+    "KeyC": {
+      "unshifted": "ে",
+      "shifted": "ৈ",
+      "altgr": null
+    },
+    "KeyV": {
+      "unshifted": "র",
+      "shifted": "ল",
+      "altgr": null
+    },
+    "KeyB": {
+      "unshifted": "ব",
+      "shifted": "ভ",
+      "altgr": null
+    },
+    "KeyN": {
+      "unshifted": "স",
+      "shifted": "ষ",
+      "altgr": null
+    },
+    "KeyM": {
+      "unshifted": "শ",
+      "shifted": "স",
+      "altgr": null
+    },
+    "Comma": {
+      "unshifted": ",",
+      "shifted": "ৎ",
+      "altgr": null
+    },
+    "Period": {
+      "unshifted": ".",
+      "shifted": "।",
+      "altgr": null
+    },
+    "Slash": {
+      "unshifted": "?",
+      "shifted": "ঃ",
+      "altgr": null
+    },
+    "Space": {
+      "unshifted": " ",
+      "shifted": " ",
+      "altgr": null
+    }
+  }
+}

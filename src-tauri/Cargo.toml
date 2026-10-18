@@ -1,0 +1,22 @@
+[package]
+name = "bornomala-desktop"
+version = "0.1.0"
+description = "Desktop sandbox and settings application for BornoMala Bangla Input Platform"
+edition = "2021"
+default-run = "bornomala-desktop"
+
+[lib]
+name = "bornomala_desktop_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bornomala-core = { path = "../crates/bornomala-core" }
+
+[dev-dependencies]
