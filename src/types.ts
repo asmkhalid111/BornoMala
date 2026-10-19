@@ -7,6 +7,12 @@ export type StartupMode = "Phonetic" | "Fixed" | "EnglishPassthrough";
 
 export type FixedLayoutId = "National" | "Probhat" | "Bijoy";
 
+export type CandidateOrientation = "vertical" | "horizontal";
+
+export type ThemeId = "dark-glass" | "light-glass" | "high-contrast";
+
+export type ModeToggleKey = "F12" | "F4";
+
 export interface BornoConfig {
   schema_version: string;
   default_startup_mode: StartupMode;
@@ -16,6 +22,11 @@ export interface BornoConfig {
   enable_dictionary_assistance: boolean;
   enable_word_completion: boolean;
   max_dictionary_suggestions: number;
+  auto_convert_period_to_dari: boolean;
+  candidate_orientation: CandidateOrientation;
+  candidate_font_size: number;
+  active_theme: ThemeId;
+  mode_toggle_key: ModeToggleKey;
 }
 
 export type PersistenceStatus =

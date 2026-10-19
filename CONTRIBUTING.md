@@ -41,9 +41,9 @@ To ensure your time is respected and efforts are not wasted on unmergeable chang
      - **Sub-Millisecond Keystroke Latency:** Maintain zero-overhead state transactions.
      - **Strict Canonical Normalization:** Every emitted character must adhere to Unicode NFC and joiner safety.
 3. **Keep the Test Suite 100% Green:**
-   - Every pull request must compile cleanly, introduce automated tests for new functionality, and pass the existing 229 automated tests:
+   - Every pull request must compile cleanly, introduce automated tests for new functionality, and pass the existing 246 automated tests:
      ```powershell
-     # Core Rust engine test suite (221 tests)
+     # Core Rust engine test suite (238 tests)
      cargo test -p bornomala-core
 
      # Desktop persistence suite (8 tests)

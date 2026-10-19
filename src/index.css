@@ -1,18 +1,20 @@
-:root {
-  --bg-primary: #0b0f19;
+:root,
+[data-theme="dark-glass"] {
+  --bg-primary: #0f172a;
   --bg-secondary: #111827;
   --bg-tertiary: #1f2937;
   --bg-card: rgba(17, 24, 39, 0.75);
   --bg-card-hover: rgba(31, 41, 55, 0.85);
   
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-focus: #0ea5e9;
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-focus: #38bdf8;
+  --accent-focus: #38bdf8;
   
   --text-primary: #f9fafb;
   --text-secondary: #9ca3af;
   --text-muted: #6b7280;
   
-  --accent-cyan: #06b6d4;
+  --accent-cyan: #38bdf8;
   --accent-emerald: #10b981;
   --accent-indigo: #6366f1;
   --accent-rose: #f43f5e;
@@ -21,11 +23,85 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.6);
-  --glow-cyan: 0 0 16px rgba(6, 182, 212, 0.35);
+  --glow-cyan: 0 0 16px rgba(56, 189, 248, 0.35);
 
   --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-bangla: 'Noto Sans Bengali', 'Kalpurush', 'SolaimanLipi', 'Nirmala UI', 'Vrinda', sans-serif;
   --font-mono: 'Fira Code', monospace;
+}
+
+[data-theme="light-glass"] {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #f1f5f9;
+  --bg-tertiary: #e2e8f0;
+  --bg-card: rgba(255, 255, 255, 0.85);
+  --bg-card-hover: rgba(255, 255, 255, 0.95);
+  
+  --border-subtle: rgba(15, 23, 42, 0.12);
+  --border-focus: #0284c7;
+  --accent-focus: #0284c7;
+  
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  
+  --accent-cyan: #0284c7;
+  --accent-emerald: #059669;
+  --accent-indigo: #4f46e5;
+  --accent-rose: #e11d48;
+  --accent-amber: #d97706;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  --glow-cyan: 0 0 16px rgba(2, 132, 199, 0.25);
+
+  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-bangla: 'Noto Sans Bengali', 'Kalpurush', 'SolaimanLipi', 'Nirmala UI', 'Vrinda', sans-serif;
+  --font-mono: 'Fira Code', monospace;
+}
+
+[data-theme="high-contrast"] {
+  --bg-primary: #000000;
+  --bg-secondary: #000000;
+  --bg-tertiary: #121212;
+  --bg-card: #000000;
+  --bg-card-hover: #1a1a1a;
+  
+  --border-subtle: #ffffff;
+  --border-focus: #facc15;
+  --accent-focus: #facc15;
+  
+  --text-primary: #ffffff;
+  --text-secondary: #ffffff;
+  --text-muted: #e5e5e5;
+  
+  --accent-cyan: #facc15;
+  --accent-emerald: #4ade80;
+  --accent-indigo: #a78bfa;
+  --accent-rose: #fb7185;
+  --accent-amber: #facc15;
+
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --glow-cyan: none;
+
+  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-bangla: 'Noto Sans Bengali', 'Kalpurush', 'SolaimanLipi', 'Nirmala UI', 'Vrinda', sans-serif;
+  --font-mono: 'Fira Code', monospace;
+}
+
+[data-theme="high-contrast"] .glass-panel {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 2px solid #ffffff !important;
+  box-shadow: none !important;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-focus, #38bdf8);
+  outline-offset: 2px;
 }
 
 * {

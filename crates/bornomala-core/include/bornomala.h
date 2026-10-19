@@ -25,6 +25,8 @@ extern "C" {
 #define BORNO_ERR_INVALID_UTF8      -2
 #define BORNO_ERR_PANIC             -3
 #define BORNO_ERR_INVALID_ARGUMENT  -4
+#define BORNO_ERR_INVALID_CONFIG    -5
+#define BORNO_ERR_UNSUPPORTED_SCHEMA -6
 
 /* Input Modes */
 #define BORNO_MODE_PHONETIC          0
@@ -207,6 +209,19 @@ BornoEngineHandle* borno_engine_new(void);
  * Passing NULL is a safe no-op.
  */
 void borno_engine_free(BornoEngineHandle* handle);
+
+/**
+ * @brief Reconfigure the engine in-place using a JSON configuration string.
+ *
+ * Supports schemas v1.0.0, v1.1.0, and v1.2.0. In-place reconfiguration updates
+ * settings and layout preferences without mutating active composition or preedit text.
+ *
+ * @param handle Valid engine handle.
+ * @param json_utf8 Null-terminated UTF-8 JSON configuration string.
+ * @return BORNO_OK on success, BORNO_ERR_INVALID_CONFIG (-5) on malformed JSON or validation
+ *         failure, BORNO_ERR_UNSUPPORTED_SCHEMA (-6) on unsupported schema, or standard FFI error.
+ */
+int32_t borno_engine_configure_json(BornoEngineHandle* handle, const char* json_utf8);
 
 /* ========================================================================= */
 /* Engine State & Event Dispatch                                             */

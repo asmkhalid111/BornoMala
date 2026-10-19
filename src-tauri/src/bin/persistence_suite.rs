@@ -34,8 +34,8 @@ fn main() {
     test_persistence_unsupported_schema_reset_requires_force_and_backs_up();
     println!("✓ test_persistence_unsupported_schema_reset_requires_force_and_backs_up passed");
 
-    test_persistence_migration_from_v1_0_0_upgrades_to_v1_1_0_and_adds_defaults();
-    println!("✓ test_persistence_migration_from_v1_0_0_upgrades_to_v1_1_0_and_adds_defaults passed");
+    test_persistence_migration_upgrades_to_v1_2_0_and_adds_defaults();
+    println!("✓ test_persistence_migration_upgrades_to_v1_2_0_and_adds_defaults passed");
 
     println!("\n[Persistence Suite] All 8 Layer 3 persistence tests PASSED successfully!");
 }
@@ -219,7 +219,7 @@ fn test_persistence_unsupported_schema_reset_requires_force_and_backs_up() {
     assert_eq!(outcome, LoadOutcome::LoadedOk);
 }
 
-fn test_persistence_migration_from_v1_0_0_upgrades_to_v1_1_0_and_adds_defaults() {
+fn test_persistence_migration_upgrades_to_v1_2_0_and_adds_defaults() {
     let dir = TestTempDir::new();
     let path = dir.path().join("config.json");
 
@@ -232,26 +232,32 @@ fn test_persistence_migration_from_v1_0_0_upgrades_to_v1_1_0_and_adds_defaults()
 }"#;
     std::fs::write(&path, legacy_1_0_0_json).expect("write legacy 1.0.0 json");
 
-    // Load legacy config: should upgrade to 1.1.0 in-memory and write back to disk
+    // Load legacy config: should upgrade to 1.2.0 in-memory and write back to disk
     let (loaded, status, outcome) = load_config(&path);
     assert_eq!(status, PersistenceStatus::Active);
     assert_eq!(outcome, LoadOutcome::LoadedOk);
-    assert_eq!(loaded.schema_version, "1.1.0");
+    assert_eq!(loaded.schema_version, "1.2.0");
     assert_eq!(loaded.candidate_display_limit, 4);
     assert!(!loaded.auto_commit_on_mode_switch);
     assert!(loaded.enable_dictionary_assistance);
     assert!(loaded.enable_word_completion);
     assert_eq!(loaded.max_dictionary_suggestions, 3);
+    assert!(!loaded.auto_convert_period_to_dari);
+    assert_eq!(loaded.candidate_orientation, bornomala_core::CandidateOrientation::Vertical);
+    assert_eq!(loaded.candidate_font_size, 14);
+    assert_eq!(loaded.active_theme, bornomala_core::ThemeId::DarkGlass);
+    assert_eq!(loaded.mode_toggle_key, bornomala_core::ModeToggleKey::F12);
 
-    // Verify disk content is upgraded to 1.1.0 JSON
+    // Verify disk content is upgraded to 1.2.0 JSON
     let disk_content = std::fs::read_to_string(&path).expect("read upgraded json");
     let disk_config: BornoConfig = serde_json::from_str(&disk_content).expect("parse upgraded disk config");
-    assert_eq!(disk_config.schema_version, "1.1.0");
+    assert_eq!(disk_config.schema_version, "1.2.0");
     assert_eq!(disk_config.candidate_display_limit, 4);
     assert!(!disk_config.auto_commit_on_mode_switch);
     assert!(disk_config.enable_dictionary_assistance);
     assert!(disk_config.enable_word_completion);
     assert_eq!(disk_config.max_dictionary_suggestions, 3);
+    assert!(!disk_config.auto_convert_period_to_dari);
 
     // Reloading again should load cleanly as LoadedOk
     let (reloaded, re_status, re_outcome) = load_config(&path);

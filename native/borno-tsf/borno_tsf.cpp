@@ -70,6 +70,119 @@ class BornoTextService : public ITfTextInputProcessorEx,
     int32_t m_currentMode;
     bool m_isComposing;
     TfGuidAtom m_attrInputAtom;
+    UINT m_modeToggleKey;
+
+    struct ConfigMetadata {
+        FILETIME lastWriteTime;
+        DWORD fileSize;
+        uint32_t simpleHash;
+        DWORD lastCheckTick;
+    } m_configMeta;
+
+    std::wstring GetConfigFilePath() const {
+        wchar_t appData[MAX_PATH] = {};
+        if (GetEnvironmentVariableW(L"APPDATA", appData, MAX_PATH) > 0) {
+            std::wstring path = appData;
+            path += L"\\com.bornomala.desktop\\config.json";
+            return path;
+        }
+        return L"";
+    }
+
+    void CheckAndReloadConfig() {
+        DWORD now = GetTickCount();
+        if (now - m_configMeta.lastCheckTick < 50) return;
+        m_configMeta.lastCheckTick = now;
+
+        std::wstring path = GetConfigFilePath();
+        if (path.empty()) return;
+
+        WIN32_FILE_ATTRIBUTE_DATA fad = {};
+        if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &fad)) {
+            return;
+        }
+
+        if (fad.ftLastWriteTime.dwLowDateTime == m_configMeta.lastWriteTime.dwLowDateTime &&
+            fad.ftLastWriteTime.dwHighDateTime == m_configMeta.lastWriteTime.dwHighDateTime &&
+            fad.nFileSizeLow == m_configMeta.fileSize) {
+            return;
+        }
+
+        HANDLE hFile = CreateFileW(path.c_str(), GENERIC_READ,
+                                   FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                   nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (hFile == INVALID_HANDLE_VALUE) {
+            return;
+        }
+
+        DWORD bytesRead = 0;
+        std::string content;
+        content.resize(fad.nFileSizeLow);
+        if (ReadFile(hFile, &content[0], fad.nFileSizeLow, &bytesRead, nullptr) && bytesRead == fad.nFileSizeLow) {
+            CloseHandle(hFile);
+
+            uint32_t hash = 5381;
+            for (unsigned char c : content) {
+                hash = ((hash << 5) + hash) + c;
+            }
+
+            if (hash == m_configMeta.simpleHash) {
+                m_configMeta.lastWriteTime = fad.ftLastWriteTime;
+                m_configMeta.fileSize = fad.nFileSizeLow;
+                return;
+            }
+
+            if (m_pEngine) {
+                int32_t res = borno_engine_configure_json(m_pEngine, content.c_str());
+                if (res == BORNO_OK) {
+                    m_configMeta.lastWriteTime = fad.ftLastWriteTime;
+                    m_configMeta.fileSize = fad.nFileSizeLow;
+                    m_configMeta.simpleHash = hash;
+
+                    ApplyParsedConfig(content);
+                }
+            }
+        } else {
+            CloseHandle(hFile);
+        }
+    }
+
+    void ApplyParsedConfig(const std::string& json) {
+        size_t pos = json.find("\"candidate_font_size\"");
+        if (pos != std::string::npos) {
+            size_t colon = json.find(':', pos);
+            if (colon != std::string::npos) {
+                int size = std::atoi(json.c_str() + colon + 1);
+                if (size >= 10 && size <= 24 && m_pCandidateWindow) {
+                    m_pCandidateWindow->SetFontSize(size);
+                }
+            }
+        }
+
+        pos = json.find("\"active_theme\"");
+        if (pos != std::string::npos) {
+            size_t firstQuote = json.find('\"', pos + 14);
+            if (firstQuote != std::string::npos) {
+                size_t secondQuote = json.find('\"', firstQuote + 1);
+                if (secondQuote != std::string::npos) {
+                    std::string theme = json.substr(firstQuote + 1, secondQuote - firstQuote - 1);
+                    if (m_pCandidateWindow) {
+                        m_pCandidateWindow->SetTheme(theme);
+                    }
+                }
+            }
+        }
+
+        pos = json.find("\"mode_toggle_key\"");
+        if (pos != std::string::npos) {
+            if (json.find("\"F4\"", pos) != std::string::npos &&
+                json.find("\"F4\"", pos) < pos + 30) {
+                m_modeToggleKey = VK_F4;
+            } else {
+                m_modeToggleKey = VK_F12;
+            }
+        }
+    }
 
 public:
     BornoTextService()
@@ -83,7 +196,9 @@ public:
           m_pLangBarItem(nullptr),
           m_currentMode(BORNO_MODE_PHONETIC),
           m_isComposing(false),
-          m_attrInputAtom(0)
+          m_attrInputAtom(0),
+          m_modeToggleKey(VK_F12),
+          m_configMeta{}
     {
         InterlockedIncrement(&g_objectCount);
         m_pEngine = borno_engine_new();
@@ -207,6 +322,9 @@ public:
             pCatMgr->Release();
         }
 
+        // 6. Initial configuration load
+        CheckAndReloadConfig();
+
         return S_OK;
     }
 
@@ -295,6 +413,8 @@ public:
     STDMETHODIMP OnInitDocumentMgr(ITfDocumentMgr* pdim) override { return S_OK; }
     STDMETHODIMP OnUninitDocumentMgr(ITfDocumentMgr* pdim) override { return S_OK; }
     STDMETHODIMP OnSetFocus(ITfDocumentMgr* pdimFocus, ITfDocumentMgr* pdimPrevFocus) override {
+        CheckAndReloadConfig();
+
         // If composition is active on focus change, reset cleanly
         if (m_isComposing && m_pComposition) {
             m_pComposition->Release();
@@ -316,12 +436,23 @@ public:
 
     // --- ITfKeyEventSink ---
     STDMETHODIMP OnSetFocus(BOOL fForeground) override {
+        if (fForeground) {
+            CheckAndReloadConfig();
+        }
         return S_OK;
     }
 
     STDMETHODIMP OnTestKeyDown(ITfContext* pic, WPARAM wParam, LPARAM lParam, BOOL* pfEaten) override {
         if (!pfEaten) return E_INVALIDARG;
         *pfEaten = FALSE;
+
+        CheckAndReloadConfig();
+
+        // Configurable mode toggle key (F12 or F4)
+        if (wParam == m_modeToggleKey) {
+            *pfEaten = TRUE;
+            return S_OK;
+        }
 
         // English passthrough mode does not intercept typing
         if (m_currentMode == BORNO_MODE_PASSTHROUGH) {
@@ -380,6 +511,14 @@ public:
     STDMETHODIMP OnKeyDown(ITfContext* pic, WPARAM wParam, LPARAM lParam, BOOL* pfEaten) override {
         if (!pfEaten) return E_INVALIDARG;
         *pfEaten = FALSE;
+
+        // Mode toggle key (F12 or F4)
+        if (wParam == m_modeToggleKey) {
+            int32_t newMode = (m_currentMode == BORNO_MODE_PASSTHROUGH) ? BORNO_MODE_PHONETIC : BORNO_MODE_PASSTHROUGH;
+            SetEngineMode(newMode);
+            *pfEaten = TRUE;
+            return S_OK;
+        }
 
         if (!pic || !m_pEngine || m_currentMode == BORNO_MODE_PASSTHROUGH) {
             return S_OK;

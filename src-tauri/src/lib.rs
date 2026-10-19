@@ -93,12 +93,7 @@ fn save_config(config: BornoConfig, state: State<'_, AppState>) -> Result<BornoC
     let mut engine = state.engine.lock().map_err(|_| {
         "Settings saved to disk, but active engine is unresponsive. Restart required.".to_string()
     })?;
-    engine.set_candidate_display_limit(config.candidate_display_limit);
-    engine.set_auto_commit_on_mode_switch(config.auto_commit_on_mode_switch);
-    engine.set_preferred_fixed_layout(config.preferred_fixed_layout);
-    engine.set_enable_dictionary_assistance(config.enable_dictionary_assistance);
-    engine.set_enable_word_completion(config.enable_word_completion);
-    engine.set_max_dictionary_suggestions(config.max_dictionary_suggestions);
+    engine.configure(&config);
 
     // Step 4: Update effective_config and persistence_status
     let mut eff = state.effective_config.lock().map_err(|e| e.to_string())?;
@@ -125,12 +120,7 @@ fn reset_config(state: State<'_, AppState>) -> Result<ConfigResponse, String> {
     let mut engine = state.engine.lock().map_err(|_| {
         "Settings reset on disk, but active engine is unresponsive. Restart required.".to_string()
     })?;
-    engine.set_candidate_display_limit(default_config.candidate_display_limit);
-    engine.set_auto_commit_on_mode_switch(default_config.auto_commit_on_mode_switch);
-    engine.set_preferred_fixed_layout(default_config.preferred_fixed_layout);
-    engine.set_enable_dictionary_assistance(default_config.enable_dictionary_assistance);
-    engine.set_enable_word_completion(default_config.enable_word_completion);
-    engine.set_max_dictionary_suggestions(default_config.max_dictionary_suggestions);
+    engine.configure(&default_config);
 
     // Update effective_config and persistence_status
     let mut eff = state.effective_config.lock().map_err(|e| e.to_string())?;
@@ -145,6 +135,38 @@ fn reset_config(state: State<'_, AppState>) -> Result<ConfigResponse, String> {
         config_path: state.config_path.to_string_lossy().to_string(),
         backup_created: backup_path,
     })
+}
+
+#[tauri::command]
+fn reset_config_to_defaults(state: State<'_, AppState>) -> Result<ConfigResponse, String> {
+    reset_config(state)
+}
+
+#[tauri::command]
+fn export_config(path: Option<String>, state: State<'_, AppState>) -> Result<String, String> {
+    let config = state.effective_config.lock().map_err(|e| e.to_string())?.clone();
+    if let Some(ref p) = path {
+        if !p.is_empty() {
+            let export_path = std::path::Path::new(p);
+            config_store::save_config_safe(export_path, &config)?;
+        }
+    }
+    serde_json::to_string_pretty(&config).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn import_config(json_or_path: String, state: State<'_, AppState>) -> Result<BornoConfig, String> {
+    let content = if json_or_path.trim().starts_with('{') {
+        json_or_path
+    } else {
+        let import_path = std::path::Path::new(&json_or_path);
+        if !import_path.exists() {
+            return Err(format!("Import file not found: {json_or_path}"));
+        }
+        std::fs::read_to_string(import_path).map_err(|e| e.to_string())?
+    };
+    let config = BornoConfig::from_json_str(&content).map_err(|e| e.to_string())?;
+    save_config(config, state)
 }
 
 #[tauri::command]
@@ -242,7 +264,10 @@ pub fn run() {
             get_config,
             get_config_path,
             save_config,
-            reset_config
+            reset_config,
+            reset_config_to_defaults,
+            export_config,
+            import_config
         ])
         .run(tauri::generate_context!());
 

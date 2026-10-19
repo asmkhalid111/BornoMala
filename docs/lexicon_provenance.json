@@ -10,17 +10,17 @@
     "source_url": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bn_BD/bn_BD.dic",
     "license": "GPLv2+ / LGPLv2.1+ / MPL 1.1 tri-license",
     "usage": "Offline validation oracle only; zero hunspell data redistributed in runtime binary",
-    "verified_word_count": 15822,
-    "verified_percentage": "39.55%"
+    "verified_word_count": 15823,
+    "verified_percentage": "39.56%"
   },
   "preprocessing_stats": {
     "raw_entries_count": 184320,
     "valid_bengali_tokens": 126064,
     "unique_nfc_words": 119067,
     "words_freq_ge_3": 44766,
-    "final_vocabulary_count": 40000,
+    "final_vocabulary_count": 40001,
     "binary_artifact": "crates/borno-core/data/lexicon.bin",
-    "binary_size_bytes": 1116596,
-    "binary_sha256": "97db33d26ec1a5b358103f5945f95b0a7d9610db979991f1f7a47fe94f383288"
+    "binary_size_bytes": 1116626,
+    "binary_sha256": "de2ea1e227f92eca810cfe899af3b052ae7366225eedae08494fc2a8c412f9c7"
   }
 }

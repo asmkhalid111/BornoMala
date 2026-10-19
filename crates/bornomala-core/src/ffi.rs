@@ -15,7 +15,10 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::ptr;
-use crate::{BornoEngine, EngineEvent, EngineState, EngineStatus, InputMode, ProcessResult};
+use crate::{
+    BornoConfig, BornoEngine, ConfigError, EngineEvent, EngineState, EngineStatus, InputMode,
+    ProcessResult,
+};
 
 // Status and error codes
 pub const BORNO_OK: i32 = 0;
@@ -23,6 +26,8 @@ pub const BORNO_ERR_NULL_PTR: i32 = -1;
 pub const BORNO_ERR_INVALID_UTF8: i32 = -2;
 pub const BORNO_ERR_PANIC: i32 = -3;
 pub const BORNO_ERR_INVALID_ARGUMENT: i32 = -4;
+pub const BORNO_ERR_INVALID_CONFIG: i32 = -5;
+pub const BORNO_ERR_UNSUPPORTED_SCHEMA: i32 = -6;
 
 // Input Mode constants
 pub const BORNO_MODE_PHONETIC: i32 = 0;
@@ -216,6 +221,46 @@ pub unsafe extern "C" fn borno_engine_free(handle: *mut BornoEngineHandle) {
         let _ = std::panic::catch_unwind(|| {
             drop(Box::from_raw(handle));
         });
+    }
+}
+
+/// Reconfigure the engine using a JSON configuration string conforming to schema v1.0.0, v1.1.0, or v1.2.0.
+///
+/// In-place reconfiguration updates settings and layout preferences without mutating active composition
+/// or preedit text.
+///
+/// Returns:
+/// - `BORNO_OK` (0) on success
+/// - `BORNO_ERR_NULL_PTR` (-1) if handle or json_utf8 is NULL
+/// - `BORNO_ERR_INVALID_UTF8` (-2) if json_utf8 is not valid UTF-8
+/// - `BORNO_ERR_INVALID_CONFIG` (-5) on malformed JSON or validation errors
+/// - `BORNO_ERR_UNSUPPORTED_SCHEMA` (-6) on unsupported schema version
+#[no_mangle]
+pub unsafe extern "C" fn borno_engine_configure_json(
+    handle: *mut BornoEngineHandle,
+    json_utf8: *const c_char,
+) -> i32 {
+    if handle.is_null() || json_utf8.is_null() {
+        return BORNO_ERR_NULL_PTR;
+    }
+    let c_str = CStr::from_ptr(json_utf8);
+    let json_str = match c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return BORNO_ERR_INVALID_UTF8,
+    };
+    match BornoConfig::from_json_str(json_str) {
+        Ok(cfg) => {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let engine = &mut (*handle).inner;
+                engine.configure(&cfg);
+                BORNO_OK
+            }));
+            result.unwrap_or(BORNO_ERR_PANIC)
+        }
+        Err(ConfigError::UnsupportedSchemaVersion(_)) => BORNO_ERR_UNSUPPORTED_SCHEMA,
+        Err(ConfigError::Validation(_)) | Err(ConfigError::MalformedJson(_)) => {
+            BORNO_ERR_INVALID_CONFIG
+        }
     }
 }
 

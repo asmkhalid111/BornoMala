@@ -38,7 +38,7 @@ HUNSPELL_URL = "https://raw.githubusercontent.com/LibreOffice/dictionaries/maste
 HUNSPELL_DIC = os.path.join(CACHE_DIR, "bn_BD.dic")
 
 WORKSPACE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-DATA_DIR = os.path.join(WORKSPACE_ROOT, "crates", "borno-core", "data")
+DATA_DIR = os.path.join(WORKSPACE_ROOT, "crates", "bornomala-core", "data")
 DOCS_DIR = os.path.join(WORKSPACE_ROOT, "docs")
 
 # Valid Bengali Unicode characters for standard text words
@@ -209,7 +209,7 @@ def main():
 
     # Ensure target test words are present and have high enough frequency
     target_words = [
-        "ক্ষমা", "বিজ্ঞান", "ভাষা", "বাংলাদেশ", "বাংলা", "বাঙালি", "কষ্ট", "বৃষ্টি"
+        "ক্ষমা", "বিজ্ঞান", "ভাষা", "বাংলাদেশ", "বাংলা", "বাঙালি", "কষ্ট", "বৃষ্টি", "বর্ণমালা"
     ]
     for tw in target_words:
         norm_tw = unicodedata.normalize('NFC', tw)
@@ -228,7 +228,7 @@ def main():
         norm_tw = unicodedata.normalize('NFC', tw)
         if norm_tw not in selected_words_set:
             # Force include if missing
-            selected_items.append((norm_tw, freq_map.get(norm_tw, 100)))
+            selected_items.append((norm_tw, max(freq_map.get(norm_tw, 0), 25)))
             print(f"[prepare_lexicon] Force included target word: {norm_tw}")
 
     # Re-sort

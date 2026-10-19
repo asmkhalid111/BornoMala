@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useMemo } from "react";
-import { EngineState, PhysicalKey, Modifiers, CandidateKind } from "../types";
+import { EngineState, PhysicalKey, Modifiers, CandidateKind, CandidateOrientation } from "../types";
 
 export interface ShapingSample {
   id: string;
@@ -134,6 +134,8 @@ export const SHAPING_SAMPLES: ShapingSample[] = [
 interface SandboxTypingAreaProps {
   engineState: EngineState;
   committedHistory: string;
+  candidateOrientation?: CandidateOrientation;
+  candidateFontSize?: number;
   onSendChar: (c: string) => void;
   onBackspace: () => void;
   onDelete: () => void;
@@ -283,6 +285,8 @@ const renderCandidateBadge = (kind?: CandidateKind) => {
 export const SandboxTypingArea: React.FC<SandboxTypingAreaProps> = ({
   engineState,
   committedHistory,
+  candidateOrientation = "horizontal",
+  candidateFontSize = 14,
   onSendChar,
   onBackspace,
   onDelete,
@@ -450,6 +454,10 @@ export const SandboxTypingArea: React.FC<SandboxTypingAreaProps> = ({
     }
     // Phonetic defaults
     return [
+      { label: ".. → ।", val: ".." },
+      { label: ".... → ॥", val: "...." },
+      { label: "tomake → তোমাকে (Slot 1)", val: "tomake" },
+      { label: "bornomala → বর্ণমালা (Slot 1)", val: "bornomala" },
       { label: "k → ক", val: "k" },
       { label: "ka → কা (3 cands)", val: "ka" },
       { label: "ami → আমি (2 cands)", val: "ami" },
@@ -671,7 +679,17 @@ export const SandboxTypingArea: React.FC<SandboxTypingAreaProps> = ({
               (1-9 / click: commit, Tab / ↓↑: highlight)
             </span>
           </div>
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", minHeight: "52px", alignItems: "center" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: candidateOrientation === "vertical" ? "column" : "row",
+              flexWrap: candidateOrientation === "vertical" ? "nowrap" : "wrap",
+              gap: "8px",
+              minHeight: "52px",
+              alignItems: candidateOrientation === "vertical" ? "stretch" : "center",
+              width: "100%",
+            }}
+          >
             {engineState.candidates.length > 0 ? (
               engineState.candidates.map((cand, idx) => {
                 const isSelected = engineState.selected_candidate_index === idx;
@@ -682,27 +700,31 @@ export const SandboxTypingArea: React.FC<SandboxTypingAreaProps> = ({
                     key={idx}
                     onClick={() => onSelectCandidate(idx)}
                     style={{
-                      padding: "6px 14px",
+                      padding: candidateOrientation === "vertical" ? "8px 14px" : "6px 14px",
                       borderRadius: "6px",
                       backgroundColor: isSelected ? "rgba(14, 165, 233, 0.35)" : "rgba(14, 165, 233, 0.12)",
                       border: `1px solid ${isSelected ? "var(--accent-cyan)" : "rgba(14, 165, 233, 0.3)"}`,
                       boxShadow: isSelected ? "0 0 12px rgba(14, 165, 233, 0.5)" : "none",
                       color: "#ffffff",
-                      fontSize: "18px",
+                      fontSize: `${candidateFontSize}pt`,
                       fontFamily: "var(--font-bangla)",
                       display: "flex",
                       alignItems: "center",
-                      gap: "6px",
+                      justifyContent: candidateOrientation === "vertical" ? "space-between" : "flex-start",
+                      gap: "8px",
                       cursor: "pointer",
                       transition: "all 0.15s ease",
                       outline: "none",
+                      width: candidateOrientation === "vertical" ? "100%" : "auto",
                     }}
                     title={`Click or press '${idx + 1}' to commit`}
                   >
-                    <span style={{ fontSize: "11px", color: isSelected ? "#ffffff" : "var(--accent-cyan)", fontFamily: "var(--font-mono)" }}>
-                      {idx + 1}.
-                    </span>
-                    <span>{cand}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ fontSize: "11px", color: isSelected ? "#ffffff" : "var(--accent-cyan)", fontFamily: "var(--font-mono)" }}>
+                        {idx + 1}.
+                      </span>
+                      <span>{cand}</span>
+                    </div>
                     {badge}
                   </button>
                 );

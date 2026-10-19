@@ -137,6 +137,22 @@ Python should not become a mandatory runtime dependency for ordinary typing unle
 - Keep test fixtures and evaluation sets reproducible.
 - Treat dependencies, licenses, resource origins, and update mechanisms as release concerns.
 
+### 2.6 Design System & UX Evolution Architecture
+
+To ensure appearance, usability, accessibility, and cross-platform consistency evolve systematically without coupling design churn to core engine milestones, the platform enforces **three independently versioned domains**:
+
+1. **Product Release & Milestone Versioning (`v1.0.0`, `M0`...`M13`):**  
+   Tracks delivered functional features, language engine capabilities, and OS integrations.
+2. **Design System / UX Versioning (`UX X.Y.Z`):**  
+   Tracks visual design tokens, component patterns, typography, ergonomics, and accessibility conventions. Documented authoritative baseline: `UX 0.1.0` in [`docs/design-system-and-usability.md`](docs/design-system-and-usability.md). Product `v1.0.0` does not require or imply `UX 1.0.0`.
+3. **Configuration Schema Versioning (`schema_version: "1.2.0"`):**  
+   Tracks the JSON data contract persisted to disk (`config.json`), governed by the Rust core (`crates/bornomala-core/src/config.rs`) and persistence migration tests.
+
+#### Key Invariants:
+- **Decoupled Progression:** Milestone progress does not force a UX version increment. Milestones reuse the established UX version unless meaningful, approved UI pattern changes are introduced.
+- **Token vs Preference Separation:** Presentation tokens (blur, spacing, elevation) remain in adapter styles (`src/index.css`, native C++ constants). Only genuine user-configurable preferences reside in `BornoConfig`.
+- **Platform-Specific Realities:** Web stylesheets govern the sandbox; Win32 GDI C++ explicitly maps preferences to native color constants in Windows TSF; Linux Fcitx 5 delegates pixel styling to host desktop environment themes.
+
 ---
 
 ## 3. Roadmap Rules
@@ -220,6 +236,15 @@ For every generated change:
 - Record exact commands and their real outcomes.
 - When blocked by unavailable hardware/OS, create a small feasibility experiment or document the limitation; do not simulate a successful platform test.
 - Keep the repository and a visible runnable sandbox available throughout development.
+
+### 3.6 Design impact and usability governance
+
+For every milestone that touches user-facing appearance, interaction, or candidate presentation:
+
+- **Design Impact Assessment:** The milestone instruction file must evaluate impact on visual design tokens, interaction behavior, keyboard accessibility, dialog focus management, and cross-platform parity.
+- **Evidence-Based Acceptance:** A successful build alone must never be claimed as proof of usability or accessibility. Visual contrast, focus indicators, keyboard trapping, and screen-reader announcements must be supported by executable or manual test evidence.
+- **Proportionate UX Versioning:** Milestones reuse the established UX version (`UX 0.1.0`) when no meaningful design pattern changes are needed. New UX versions are created only when visual foundations, component patterns, or user interaction models change.
+- **Tracked Gaps:** Unresolved accessibility items, platform rendering differences, and high-DPI scaling behaviors must be explicitly tracked in [`docs/design-system-and-usability.md`](docs/design-system-and-usability.md) rather than prematurely marked verified.
 
 ---
 
@@ -563,6 +588,8 @@ The sequence below is the master dependency pathway. It may be adjusted when rea
 - Add import/export for supported configuration and layout formats with validation.
 - Improve accessibility, keyboard navigation, focus behavior, labels, and readable error messages.
 - Document platform differences instead of promising identical presentation everywhere.
+- Document the authoritative living design system baseline (`UX 0.1.0`) in [`docs/design-system-and-usability.md`](docs/design-system-and-usability.md), establishing token contracts and platform rendering rules.
+- Track interactive ergonomic feedback, usability observations, and linguistic edge cases in [`docs/usability-and-linguistic-backlog.md`](docs/usability-and-linguistic-backlog.md).
 - Defer complex visual editing or advanced personalization if it threatens core correctness or release readiness.
 
 ### Acceptance criteria
@@ -572,6 +599,7 @@ The sequence below is the master dependency pathway. It may be adjusted when rea
 - Keyboard-only navigation and basic accessibility checks are documented.
 - Customization changes do not break engine, Unicode, or native integration tests.
 - The release does not claim settings that are only decorative or unsupported on a platform.
+- Authoritative design system specification documented at `UX 0.1.0` in [`docs/design-system-and-usability.md`](docs/design-system-and-usability.md), with explicit verification gaps recorded.
 
 ## M10 — Contextual Prediction (Optional, Evidence-Gated)
 
@@ -586,6 +614,7 @@ The sequence below is the master dependency pathway. It may be adjusted when rea
 - Make prediction optional/opt-in if included.
 - Ensure prediction cannot block ordinary keystroke handling.
 - Keep data local and do not transmit typed text.
+- Complete a Design Impact Assessment for prediction suggestion presentation; reuse the `UX 0.1.0` baseline unless new component patterns are justified and approved.
 - If quality or performance fails the agreed thresholds, mark prediction experimental or defer it; do not hold v1.0.0 hostage to a weak model.
 
 ### Acceptance criteria
@@ -595,6 +624,7 @@ The sequence below is the master dependency pathway. It may be adjusted when rea
 - Prediction meets the agreed thresholds or is explicitly deferred/experimental.
 - Ordinary typing remains responsive when prediction is disabled and when it is enabled.
 - Privacy implications and model/resource licensing are documented.
+- Design impact on candidate presentation is assessed; no speculative UX version bump without approved UI changes.
 
 ## M11 — Hardening and Cross-Platform Regression
 
@@ -608,7 +638,9 @@ The sequence below is the master dependency pathway. It may be adjusted when rea
 - Test crash recovery and interrupted composition.
 - Review privacy behavior, logs, diagnostics, telemetry (if any), and storage.
 - Review dependency licenses, dictionary/model provenance, packaging dependencies, and third-party notices.
-- Review accessibility and keyboard navigation.
+- Review accessibility, keyboard navigation, visible focus rings, dialog focus management, and screen-reader announcements against WCAG 2.1 AA standards defined in [`docs/design-system-and-usability.md`](docs/design-system-and-usability.md).
+- Measure rendered contrast ratios of foreground and background combinations across all supported themes.
+- Test high-DPI scaling behavior (125%, 150%, 200%) on Windows native GDI surfaces.
 - Triage bugs by severity and record reproducible steps.
 - Run the same core regression suite on available environments; clearly identify unavailable platform tests.
 - Do not use unmeasured performance claims.
@@ -619,6 +651,8 @@ The sequence below is the master dependency pathway. It may be adjusted when rea
 - Core regression tests pass.
 - Performance results and test hardware/software are documented.
 - Privacy and license reviews are recorded.
+- Accessibility and contrast measurements are documented with actual test evidence, not assumed from token centralization.
+- High-DPI GDI scaling behavior and any remaining visual defects are recorded.
 - Known limitations and unverified platforms are visible.
 - No platform is marked verified solely because the shared Rust core passes.
 
@@ -631,6 +665,7 @@ The sequence below is the master dependency pathway. It may be adjusted when rea
 - Create platform-specific distribution artifacts for platforms that have passed their native integration gates.
 - Test clean install, first run, enabling the input method, normal use, upgrade, and uninstall.
 - Verify required language resources and configuration are included or downloaded only through an explicit documented flow.
+- Implement and verify the configuration lifecycle migration from `com.bornomala.sandbox` to canonical `com.bornomala.desktop`, handling existing files, coexistence, and corrupted file safety per [`docs/design-system-and-usability.md`](docs/design-system-and-usability.md).
 - Document prerequisites and supported OS versions/configurations.
 - Prepare release notes, user documentation, troubleshooting, license notices, and privacy statement.
 - Freeze feature additions while resolving release blockers.
@@ -642,6 +677,7 @@ The sequence below is the master dependency pathway. It may be adjusted when rea
 
 - Clean installation and uninstall are verified for every claimed release platform.
 - Upgrade behavior is tested or explicitly documented as not supported for the first release.
+- Configuration lifecycle migration and coexistence are tested between sandbox and desktop installations.
 - Installers/packages and checksums or equivalent artifact verification are prepared as appropriate.
 - Release notes and support matrix match actual evidence.
 - No unresolved critical/high-severity blocker remains without an explicit release decision.
@@ -676,6 +712,7 @@ The sequence below is the master dependency pathway. It may be adjusted when rea
 - No default transmission or raw logging of typed content.
 - Packaging, installation, and removal have been verified for claimed platforms.
 - Documentation, licensing, privacy statement, and support matrix are complete.
+- UX Release-Readiness Assessment: A structured review distinguishing documented design requirements ([`docs/design-system-and-usability.md`](docs/design-system-and-usability.md)), implemented behavior across supported platforms, automated test evidence, and manual accessibility/contrast verification, with unresolved items explicitly tracked.
 - No unresolved critical issue remains that risks text loss, typing failure, privacy, or installation.
 - Contextual prediction is included only if its evaluation supports inclusion; otherwise it is clearly experimental or deferred.
 

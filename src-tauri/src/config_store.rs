@@ -176,7 +176,7 @@ pub fn load_config(dest_path: &Path) -> (BornoConfig, PersistenceStatus, LoadOut
         }
     };
 
-    if version_str != "1.0.0" && version_str != "1.1.0" {
+    if version_str != "1.0.0" && version_str != "1.1.0" && version_str != "1.2.0" {
         // Unsupported schema version: PRESERVE BYTE-FOR-BYTE UNTOUCHED
         return (
             BornoConfig::default(),
@@ -211,9 +211,9 @@ pub fn load_config(dest_path: &Path) -> (BornoConfig, PersistenceStatus, LoadOut
         }
     };
 
-    // If migrating from 1.0.0, upgrade schema_version to 1.1.0 and persist to disk
-    if config.schema_version == "1.0.0" {
-        config.schema_version = "1.1.0".to_string();
+    // If migrating from 1.0.0 or 1.1.0, upgrade schema_version to 1.2.0 and persist to disk
+    if config.schema_version == "1.0.0" || config.schema_version == "1.1.0" {
+        config.schema_version = "1.2.0".to_string();
         let _ = save_config_safe(dest_path, &config);
     }
 

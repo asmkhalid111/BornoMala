@@ -12,7 +12,10 @@ pub mod ffi;
 pub mod config;
 pub mod dictionary;
 
-pub use config::{BornoConfig, ConfigValidationError, StartupMode};
+pub use config::{
+    BornoConfig, CandidateOrientation, ConfigError, ConfigValidationError, ModeToggleKey,
+    StartupMode, ThemeId,
+};
 pub use dictionary::DictionaryEngine;
 
 use serde::{Deserialize, Serialize};
@@ -239,6 +242,8 @@ pub struct BornoEngine {
     enable_dictionary_assistance: bool,
     enable_word_completion: bool,
     max_dictionary_suggestions: usize,
+    auto_convert_period_to_dari: bool,
+    last_committed_char: Option<char>,
 }
 
 impl BornoEngine {
@@ -255,6 +260,8 @@ impl BornoEngine {
             enable_dictionary_assistance: true,
             enable_word_completion: true,
             max_dictionary_suggestions: 3,
+            auto_convert_period_to_dari: false,
+            last_committed_char: None,
         }
     }
 
@@ -290,6 +297,28 @@ impl BornoEngine {
             enable_dictionary_assistance: config.enable_dictionary_assistance,
             enable_word_completion: config.enable_word_completion,
             max_dictionary_suggestions: config.max_dictionary_suggestions.clamp(1, 5),
+            auto_convert_period_to_dari: config.auto_convert_period_to_dari,
+            last_committed_char: None,
+        }
+    }
+
+    /// Reconfigures the engine in place using a validated BornoConfig.
+    ///
+    /// Preserves active preedit composition, raw_buffer, cursor position, and current mode intact.
+    /// Updates presentation limits, dictionary suggestion budgets, and auto-dari preferences.
+    /// Updates preferred fixed layout for future fixed mode switches without disrupting active composition.
+    pub fn configure(&mut self, config: &BornoConfig) {
+        self.candidate_display_limit = config.candidate_display_limit.clamp(1, 9);
+        self.auto_commit_on_mode_switch = config.auto_commit_on_mode_switch;
+        self.preferred_fixed_layout = config.preferred_fixed_layout;
+        self.enable_dictionary_assistance = config.enable_dictionary_assistance;
+        self.enable_word_completion = config.enable_word_completion;
+        self.max_dictionary_suggestions = config.max_dictionary_suggestions.clamp(1, 5);
+        self.auto_convert_period_to_dari = config.auto_convert_period_to_dari;
+
+        if self.state.candidates.len() > self.candidate_display_limit {
+            self.state.candidates.truncate(self.candidate_display_limit);
+            self.state.candidate_details.truncate(self.candidate_display_limit);
         }
     }
 
@@ -325,6 +354,16 @@ impl BornoEngine {
     /// Returns the preferred fixed layout preference.
     pub fn preferred_fixed_layout(&self) -> layout::FixedLayoutId {
         self.preferred_fixed_layout
+    }
+
+    /// Returns whether single period auto-conversion to Bengali Dari is enabled in phonetic mode.
+    pub fn auto_convert_period_to_dari(&self) -> bool {
+        self.auto_convert_period_to_dari
+    }
+
+    /// Sets whether single period auto-conversion to Bengali Dari is enabled in phonetic mode.
+    pub fn set_auto_convert_period_to_dari(&mut self, enabled: bool) {
+        self.auto_convert_period_to_dari = enabled;
     }
 
     /// Returns whether dictionary assistance is enabled.
@@ -374,6 +413,7 @@ impl BornoEngine {
 
     /// Resets the engine composition state.
     pub fn reset(&mut self) -> ProcessResult {
+        self.last_committed_char = None;
         self.process_event(EngineEvent::Reset)
     }
 
@@ -398,10 +438,29 @@ impl BornoEngine {
             && !self.state.preedit.is_empty()
             && self.state.preedit != "্"
         {
-            Some(unicode::normalize_nfc(&self.state.preedit))
+            let mut text = if let Some(idx) = self.state.selected_candidate_index {
+                if idx < self.state.candidates.len() {
+                    self.state.candidates[idx].clone()
+                } else if !self.state.candidates.is_empty() {
+                    self.state.candidates[0].clone()
+                } else {
+                    self.state.preedit.clone()
+                }
+            } else if !self.state.candidates.is_empty() {
+                self.state.candidates[0].clone()
+            } else {
+                self.state.preedit.clone()
+            };
+            if self.state.mode == InputMode::Phonetic && self.auto_convert_period_to_dari {
+                text = self.apply_auto_dari(&text);
+            }
+            Some(unicode::normalize_nfc(&text))
         } else {
             None
         };
+        if let Some(ref c) = committed {
+            self.last_committed_char = c.chars().last();
+        }
         self.clear_composition();
         self.fixed_engine.reset_state();
         self.state.mode = m;
@@ -537,8 +596,12 @@ impl BornoEngine {
                         } else {
                             res.committed_text = Some(" ".to_string());
                         }
+                        if let Some(ref c) = res.committed_text {
+                            self.last_committed_char = c.chars().last();
+                        }
                         res
                     } else {
+                        self.last_committed_char = Some(' ');
                         ProcessResult {
                             state: self.state.clone(),
                             committed_text: Some(" ".to_string()),
@@ -642,6 +705,7 @@ impl BornoEngine {
             }
             EngineEvent::Reset => {
                 self.clear_composition();
+                self.last_committed_char = None;
                 ProcessResult {
                     state: self.state.clone(),
                     committed_text: None,
@@ -1140,9 +1204,36 @@ impl BornoEngine {
         }
     }
 
+    /// Converts a trailing period to Bengali Dáñṛi U+0964 if auto-convert is enabled and
+    /// the period is not part of a numeric or domain context.
+    fn apply_auto_dari(&self, text: &str) -> String {
+        if !self.auto_convert_period_to_dari || !text.ends_with('.') {
+            return text.to_string();
+        }
+        let chars: Vec<char> = text.chars().collect();
+        if chars.is_empty() {
+            return text.to_string();
+        }
+        let is_digit = |c: char| matches!(c, '0'..='9' | '\u{09E6}'..='\u{09EF}');
+        let preceded_by_digit = if chars.len() == 1 {
+            self.last_committed_char.map_or(false, is_digit)
+        } else {
+            is_digit(chars[chars.len() - 2])
+        };
+        if preceded_by_digit {
+            return text.to_string();
+        }
+        if chars.len() > 1 && matches!(chars[chars.len() - 2], '\u{0964}' | '\u{0965}') {
+            return text.to_string();
+        }
+        let mut result: String = chars[..chars.len() - 1].iter().collect();
+        result.push('\u{0964}');
+        result
+    }
+
     /// Internal commit logic for active composition.
     fn commit_active(&mut self) -> ProcessResult {
-        let text = if let Some(idx) = self.state.selected_candidate_index {
+        let mut text = if let Some(idx) = self.state.selected_candidate_index {
             if idx < self.state.candidates.len() {
                 self.state.candidates[idx].clone()
             } else if !self.state.candidates.is_empty() {
@@ -1156,11 +1247,19 @@ impl BornoEngine {
             self.state.preedit.clone()
         };
 
+        if self.state.mode == InputMode::Phonetic && self.auto_convert_period_to_dari {
+            text = self.apply_auto_dari(&text);
+        }
+
         let committed = if text.is_empty() {
             None
         } else {
             Some(unicode::normalize_nfc(&text))
         };
+
+        if let Some(ref c) = committed {
+            self.last_committed_char = c.chars().last();
+        }
 
         self.clear_composition();
         ProcessResult {

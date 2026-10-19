@@ -64,10 +64,22 @@ pub static PHONETIC_AMBIGUITY_RULES: &[AmbiguityRule] = &[
         replace_with: "s",
         condition: AmbiguityCondition::Anywhere,
     },
+    // 8. Post-Reph nasal alternation (ণ-ত্ব বিধান): rn -> rN (e.g. bornomala -> borNomala -> বর্ণমালা)
+    AmbiguityRule {
+        pattern: "rn",
+        replace_with: "rN",
+        condition: AmbiguityCondition::Anywhere,
+    },
+    // 9. Medial vowel ambiguity: o -> O (e.g. tomake -> tOmake -> তোমাকে)
+    AmbiguityRule {
+        pattern: "o",
+        replace_with: "O",
+        condition: AmbiguityCondition::Medial,
+    },
 ];
 
 /// Maximum number of distinct rewritten raw variants generated per active token.
-pub const MAX_AMBIGUITY_VARIANTS: usize = 2;
+pub const MAX_AMBIGUITY_VARIANTS: usize = 4;
 
 /// Generates at most `MAX_AMBIGUITY_VARIANTS` candidate rewrites from the raw ASCII buffer.
 pub fn generate_raw_variants(raw_buffer: &str) -> Vec<String> {

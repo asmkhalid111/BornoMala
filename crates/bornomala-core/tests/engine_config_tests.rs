@@ -128,3 +128,54 @@ fn test_engine_startup_mode_initialization() {
     let engine_ph = BornoEngine::with_config(&config);
     assert_eq!(engine_ph.state().mode, InputMode::Phonetic);
 }
+
+#[test]
+fn test_engine_configure_in_place_preserves_active_composition() {
+    let mut engine = BornoEngine::new();
+    assert!(!engine.auto_convert_period_to_dari());
+    assert_eq!(engine.candidate_display_limit(), 5);
+
+    // Start composition
+    let res = engine.process_event(EngineEvent::InputString("ka".to_string()));
+    assert_eq!(res.state.preedit, "কা");
+    assert_eq!(res.state.raw_buffer, "ka");
+    assert!(res.state.is_composing);
+
+    // Create a new config with different settings
+    let mut new_config = BornoConfig::default();
+    new_config.candidate_display_limit = 9;
+    new_config.max_dictionary_suggestions = 5;
+    new_config.auto_convert_period_to_dari = true;
+    new_config.preferred_fixed_layout = FixedLayoutId::Probhat;
+
+    // Apply configuration in-place
+    engine.configure(&new_config);
+
+    // Verify settings updated
+    assert_eq!(engine.candidate_display_limit(), 9);
+    assert_eq!(engine.max_dictionary_suggestions(), 5);
+    assert!(engine.auto_convert_period_to_dari());
+    assert_eq!(engine.preferred_fixed_layout(), FixedLayoutId::Probhat);
+
+    // Verify active composition is preserved completely
+    assert_eq!(engine.state().preedit, "কা");
+    assert_eq!(engine.state().raw_buffer, "ka");
+    assert!(engine.state().is_composing);
+}
+
+#[test]
+fn test_engine_independent_budgets_and_validation() {
+    let mut config = BornoConfig::default();
+    config.candidate_display_limit = 9;
+    config.max_dictionary_suggestions = 5;
+    assert!(config.validate().is_ok());
+
+    let mut engine = BornoEngine::with_config(&config);
+    assert_eq!(engine.candidate_display_limit(), 9);
+    assert_eq!(engine.max_dictionary_suggestions(), 5);
+
+    engine.set_candidate_display_limit(3);
+    engine.set_max_dictionary_suggestions(2);
+    assert_eq!(engine.candidate_display_limit(), 3);
+    assert_eq!(engine.max_dictionary_suggestions(), 2);
+}

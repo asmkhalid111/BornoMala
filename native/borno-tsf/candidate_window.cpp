@@ -10,9 +10,22 @@ static const int WINDOW_WIDTH = 260;
 static const int PADDING = 6;
 
 CandidateWindow::CandidateWindow(HINSTANCE hInst)
-    : m_hwnd(nullptr), m_hInst(hInst), m_selectedIndex(-1), m_dpi(96) {}
+    : m_hwnd(nullptr), m_hInst(hInst), m_selectedIndex(-1), m_dpi(96),
+      m_fontSizePt(14), m_theme("dark-glass") {}
 
 CandidateWindow::~CandidateWindow() { Destroy(); }
+
+int CandidateWindow::GetRowHeight() const {
+  float scale = (m_dpi > 0) ? static_cast<float>(m_dpi) / 96.0f : 1.0f;
+  int fontHeight = std::abs(MulDiv(m_fontSizePt > 0 ? m_fontSizePt : 14, m_dpi > 0 ? m_dpi : 96, 72));
+  return std::max(static_cast<int>(28 * scale), fontHeight + static_cast<int>(10 * scale));
+}
+
+int CandidateWindow::GetWindowWidth() const {
+  float scale = (m_dpi > 0) ? static_cast<float>(m_dpi) / 96.0f : 1.0f;
+  float fontScale = (m_fontSizePt > 0) ? (static_cast<float>(m_fontSizePt) / 14.0f) : 1.0f;
+  return static_cast<int>(260.0f * scale * std::max(1.0f, fontScale));
+}
 
 bool CandidateWindow::Create() {
   if (m_hwnd)
@@ -31,7 +44,7 @@ bool CandidateWindow::Create() {
 
   m_hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                            CANDIDATE_WINDOW_CLASS, L"", WS_POPUP | WS_BORDER, 0,
-                           0, WINDOW_WIDTH, ROW_HEIGHT, nullptr, nullptr,
+                           0, GetWindowWidth(), GetRowHeight(), nullptr, nullptr,
                            m_hInst, this);
 
   return (m_hwnd != nullptr);
@@ -58,8 +71,8 @@ void CandidateWindow::SetCandidates(
   }
 
   float scale = (m_dpi > 0) ? static_cast<float>(m_dpi) / 96.0f : 1.0f;
-  int rowHeight = static_cast<int>(28 * scale);
-  int windowWidth = static_cast<int>(260 * scale);
+  int rowHeight = GetRowHeight();
+  int windowWidth = GetWindowWidth();
   int padding = static_cast<int>(6 * scale);
   int totalHeight =
       padding * 2 + static_cast<int>(m_candidates.size()) * rowHeight;
@@ -100,8 +113,8 @@ void CandidateWindow::UpdatePosition(ITfContext *pContext, TfEditCookie ec,
   }
 
   float scale = (m_dpi > 0) ? static_cast<float>(m_dpi) / 96.0f : 1.0f;
-  int rowHeight = static_cast<int>(28 * scale);
-  int windowWidth = static_cast<int>(260 * scale);
+  int rowHeight = GetRowHeight();
+  int windowWidth = GetWindowWidth();
   int padding = static_cast<int>(6 * scale);
   int totalHeight =
       padding * 2 + static_cast<int>(m_candidates.size()) * rowHeight;
@@ -224,7 +237,7 @@ LRESULT CALLBACK CandidateWindow::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam,
 
 void CandidateWindow::OnLButtonUp(int x, int y) {
   float scale = (m_dpi > 0) ? static_cast<float>(m_dpi) / 96.0f : 1.0f;
-  int rowHeight = static_cast<int>(28 * scale);
+  int rowHeight = GetRowHeight();
   int padding = static_cast<int>(6 * scale);
 
   if (y < padding)
@@ -245,8 +258,37 @@ void CandidateWindow::OnPaint(HWND hwnd) {
   GetClientRect(hwnd, &rcClient);
 
   float scale = (m_dpi > 0) ? static_cast<float>(m_dpi) / 96.0f : 1.0f;
-  int rowHeight = static_cast<int>(28 * scale);
+  int rowHeight = GetRowHeight();
   int padding = static_cast<int>(6 * scale);
+
+  // Determine theme colors
+  COLORREF bgColor, textColor, numColor, selBgColor, selTextColor, badgeBgColor, badgeTextColor;
+  if (m_theme == "light-glass") {
+    bgColor = RGB(255, 255, 255);
+    textColor = RGB(32, 33, 36);
+    numColor = RGB(128, 128, 128);
+    selBgColor = RGB(232, 240, 254);
+    selTextColor = RGB(26, 115, 232);
+    badgeBgColor = RGB(241, 243, 244);
+    badgeTextColor = RGB(95, 99, 104);
+  } else if (m_theme == "high-contrast") {
+    bgColor = RGB(0, 0, 0);
+    textColor = RGB(255, 255, 255);
+    numColor = RGB(255, 255, 255);
+    selBgColor = RGB(40, 40, 40);
+    selTextColor = RGB(250, 204, 21);
+    badgeBgColor = RGB(20, 20, 20);
+    badgeTextColor = RGB(250, 204, 21);
+  } else {
+    // dark-glass (default)
+    bgColor = RGB(15, 23, 42);
+    textColor = RGB(248, 250, 252);
+    numColor = RGB(148, 163, 184);
+    selBgColor = RGB(30, 41, 59);
+    selTextColor = RGB(56, 189, 248);
+    badgeBgColor = RGB(30, 41, 59);
+    badgeTextColor = RGB(148, 163, 184);
+  }
 
   // Double buffer
   HDC memDC = CreateCompatibleDC(hdc);
@@ -254,14 +296,13 @@ void CandidateWindow::OnPaint(HWND hwnd) {
       CreateCompatibleBitmap(hdc, rcClient.right, rcClient.bottom);
   HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
 
-  // Modern clean card background
-  HBRUSH bgBrush = CreateSolidBrush(RGB(255, 255, 255));
+  // Background
+  HBRUSH bgBrush = CreateSolidBrush(bgColor);
   FillRect(memDC, &rcClient, bgBrush);
   DeleteObject(bgBrush);
 
-  // Fonts: prefer Nirmala UI (native Windows Bengali font), with fallback to
-  // Segoe UI
-  int fontSize = -static_cast<int>(14 * scale);
+  // Fonts: Win32 MulDiv point-size scaling
+  int fontSize = -MulDiv(m_fontSizePt > 0 ? m_fontSizePt : 14, m_dpi > 0 ? m_dpi : 96, 72);
   HFONT hFont = CreateFontW(fontSize, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
                             CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
@@ -282,24 +323,23 @@ void CandidateWindow::OnPaint(HWND hwnd) {
 
     bool isSelected = (static_cast<int32_t>(i) == m_selectedIndex);
     if (isSelected) {
-      HBRUSH selBrush =
-          CreateSolidBrush(RGB(232, 240, 254)); // Soft blue highlight
+      HBRUSH selBrush = CreateSolidBrush(selBgColor);
       FillRect(memDC, &rcRow, selBrush);
       DeleteObject(selBrush);
     }
 
     // Draw digit number
-    SetTextColor(memDC, RGB(128, 128, 128));
+    SetTextColor(memDC, numColor);
     std::wstring numStr = std::to_wstring(i + 1) + L". ";
-    int numWidth = static_cast<int>(22 * scale);
+    int numWidth = static_cast<int>(24 * scale);
     RECT rcNum = {rcRow.left + static_cast<int>(4 * scale), rcRow.top,
                   rcRow.left + numWidth, rcRow.bottom};
     DrawTextW(memDC, numStr.c_str(), -1, &rcNum,
               DT_SINGLELINE | DT_VCENTER | DT_LEFT);
 
     // Draw candidate Bangla text
-    int badgeWidth = static_cast<int>(52 * scale);
-    SetTextColor(memDC, isSelected ? RGB(26, 115, 232) : RGB(32, 33, 36));
+    int badgeWidth = static_cast<int>(60 * scale);
+    SetTextColor(memDC, isSelected ? selTextColor : textColor);
     RECT rcText = {rcNum.right + static_cast<int>(2 * scale), rcRow.top,
                    rcRow.right - badgeWidth - static_cast<int>(4 * scale),
                    rcRow.bottom};
@@ -312,11 +352,11 @@ void CandidateWindow::OnPaint(HWND hwnd) {
                       rcRow.top + static_cast<int>(3 * scale),
                       rcRow.right - static_cast<int>(4 * scale),
                       rcRow.bottom - static_cast<int>(3 * scale)};
-      HBRUSH badgeBrush = CreateSolidBrush(RGB(241, 243, 244));
+      HBRUSH badgeBrush = CreateSolidBrush(badgeBgColor);
       FillRect(memDC, &rcBadge, badgeBrush);
       DeleteObject(badgeBrush);
 
-      SetTextColor(memDC, RGB(95, 99, 104));
+      SetTextColor(memDC, badgeTextColor);
       DrawTextW(memDC, m_candidates[i].badge.c_str(), -1, &rcBadge,
                 DT_SINGLELINE | DT_VCENTER | DT_CENTER);
     }

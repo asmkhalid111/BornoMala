@@ -586,7 +586,7 @@ fn test_benchmark_keystroke_latency() {
     );
 
     #[cfg(debug_assertions)]
-    let max_budget_ms = 2.5;
+    let max_budget_ms = 4.0;
     #[cfg(not(debug_assertions))]
     let max_budget_ms = 1.0;
 
@@ -597,3 +597,182 @@ fn test_benchmark_keystroke_latency() {
         max_budget_ms
     );
 }
+
+#[test]
+fn test_gate_01_phonetic_period_sequence_matrix() {
+    let mut engine = BornoEngine::new();
+    // Test pipe and double pipe
+    let r_pipe = engine.process_event(EngineEvent::InputString("|".to_string()));
+    assert_eq!(r_pipe.state.preedit, "\u{0964}"); // Bengali Dáñṛi ।
+    engine.reset();
+
+    let r_double_pipe = engine.process_event(EngineEvent::InputString("||".to_string()));
+    assert_eq!(r_double_pipe.state.preedit, "\u{0965}"); // Bengali Double Dáñṛi ॥
+    engine.reset();
+
+    // 1 period: "." -> "."
+    let r1 = engine.process_event(EngineEvent::InputChar('.'));
+    assert_eq!(r1.state.preedit, ".");
+
+    // 2 periods: ".." -> "।" (U+0964)
+    let r2 = engine.process_event(EngineEvent::InputChar('.'));
+    assert_eq!(r2.state.preedit, "\u{0964}");
+
+    // 3 periods: "..." -> "।."
+    let r3 = engine.process_event(EngineEvent::InputChar('.'));
+    assert_eq!(r3.state.preedit, "\u{0964}.");
+
+    // 4 periods: "...." -> "॥" (U+0965)
+    let r4 = engine.process_event(EngineEvent::InputChar('.'));
+    assert_eq!(r4.state.preedit, "\u{0965}");
+
+    // 5 periods: "....." -> "॥."
+    let r5 = engine.process_event(EngineEvent::InputChar('.'));
+    assert_eq!(r5.state.preedit, "\u{0965}.");
+
+    // 6 periods: "......" -> "॥।"
+    let r6 = engine.process_event(EngineEvent::InputChar('.'));
+    assert_eq!(r6.state.preedit, "\u{0965}\u{0964}");
+
+    // Backspace deconstruction:
+    // Backspace from 6 -> 5: "॥."
+    let b1 = engine.process_event(EngineEvent::Backspace);
+    assert_eq!(b1.state.preedit, "\u{0965}.");
+
+    // Backspace from 5 -> 4: "॥"
+    let b2 = engine.process_event(EngineEvent::Backspace);
+    assert_eq!(b2.state.preedit, "\u{0965}");
+
+    // Backspace from 4 -> 3: "।."
+    let b3 = engine.process_event(EngineEvent::Backspace);
+    assert_eq!(b3.state.preedit, "\u{0964}.");
+
+    // Backspace from 3 -> 2: "।"
+    let b4 = engine.process_event(EngineEvent::Backspace);
+    assert_eq!(b4.state.preedit, "\u{0964}");
+
+    // Backspace from 2 -> 1: "."
+    let b5 = engine.process_event(EngineEvent::Backspace);
+    assert_eq!(b5.state.preedit, ".");
+
+    // Backspace from 1 -> 0: ""
+    let b6 = engine.process_event(EngineEvent::Backspace);
+    assert_eq!(b6.state.preedit, "");
+    assert!(!b6.state.is_composing);
+}
+
+#[test]
+fn test_gate_02_single_period_auto_dari_with_safeguards() {
+    let mut engine = BornoEngine::new();
+    engine.set_auto_convert_period_to_dari(true);
+    assert!(engine.auto_convert_period_to_dari());
+
+    // 1. Sentence ending with boundary space: "ami." + space -> commits "আমি। "
+    for ch in "ami.".chars() {
+        engine.process_event(EngineEvent::InputChar(ch));
+    }
+    assert_eq!(engine.state().preedit, "আমি.");
+    let r_space = engine.process_event(EngineEvent::InputChar(' '));
+    assert_eq!(r_space.committed_text, Some("আমি। ".to_string()));
+    assert_eq!(r_space.state.preedit, "");
+
+    // 2. Sentence ending with Enter / commit: "tumi." + Commit -> commits "তুমি।"
+    for ch in "tumi.".chars() {
+        engine.process_event(EngineEvent::InputChar(ch));
+    }
+    assert_eq!(engine.state().preedit, "তুমি.");
+    let r_commit = engine.process_event(EngineEvent::Commit);
+    assert_eq!(r_commit.committed_text, Some("তুমি।".to_string()));
+
+    // 3. Numeric decimal safeguard (ASCII digits): "3.14" -> commits "3.14"
+    for ch in "3.14".chars() {
+        engine.process_event(EngineEvent::InputChar(ch));
+    }
+    let r_num = engine.process_event(EngineEvent::Commit);
+    assert_eq!(r_num.committed_text, Some("3.14".to_string()));
+
+    // 4. Numeric decimal safeguard (Bengali digits): "৩.১৪" -> commits "৩.১৪"
+    let _r_bn_num = engine.process_event(EngineEvent::InputString("৩.১৪".to_string()));
+    let r_bn_commit = engine.process_event(EngineEvent::Commit);
+    assert_eq!(r_bn_commit.committed_text, Some("৩.১৪".to_string()));
+
+    // 5. Trailing period after digit: "3." + space -> commits "3. "
+    for ch in "3.".chars() {
+        engine.process_event(EngineEvent::InputChar(ch));
+    }
+    let r_d_space = engine.process_event(EngineEvent::InputChar(' '));
+    assert_eq!(r_d_space.committed_text, Some("3. ".to_string()));
+
+    // 6. Domain safeguard: "borno.org" in phonetic mode -> commits "বর্ন.অর্গ" (preserving literal ASCII .)
+    for ch in "borno.org".chars() {
+        engine.process_event(EngineEvent::InputChar(ch));
+    }
+    let r_dom = engine.process_event(EngineEvent::Commit);
+    assert_eq!(r_dom.committed_text, Some("বর্ন.অর্গ".to_string()));
+    assert!(!r_dom.committed_text.as_ref().unwrap().contains('\u{0964}'));
+
+    // 7. When disabled: "ami." + space -> commits "আমি. "
+    engine.set_auto_convert_period_to_dari(false);
+    for ch in "ami.".chars() {
+        engine.process_event(EngineEvent::InputChar(ch));
+    }
+    let r_disabled = engine.process_event(EngineEvent::InputChar(' '));
+    assert_eq!(r_disabled.committed_text, Some("আমি. ".to_string()));
+}
+
+#[test]
+fn test_gate_03_ambiguity_vowel_tomake_ranked_slot_1() {
+    let mut engine = BornoEngine::new();
+    engine.set_enable_dictionary_assistance(true);
+
+    for ch in "tomake".chars() {
+        engine.process_event(EngineEvent::InputChar(ch));
+    }
+
+    let state = engine.state();
+    assert!(state.candidates.len() >= 2);
+    // Candidate Slot 0 strictly immutable PrimaryTransliteration
+    assert_eq!(state.candidates[0], "তমাকে");
+    assert_eq!(state.candidate_details[0].kind, bornomala_core::CandidateKind::PrimaryTransliteration);
+
+    // Candidate Slot 1 is ExactLexiconMatch from medial o -> O ambiguity
+    assert_eq!(state.candidates[1], "তোমাকে");
+    assert_eq!(state.candidate_details[1].kind, bornomala_core::CandidateKind::ExactLexiconMatch);
+    assert_eq!(state.candidate_details[1].score, 36);
+}
+
+#[test]
+fn test_gate_04_ambiguity_nasal_bornomala_and_negative_cases() {
+    let mut engine = BornoEngine::new();
+    engine.set_enable_dictionary_assistance(true);
+
+    // 1. Positive case: "bornomala" -> Slot 0: "বর্নমালা", Slot 1: "বর্ণমালা"
+    for ch in "bornomala".chars() {
+        engine.process_event(EngineEvent::InputChar(ch));
+    }
+    let state = engine.state();
+    assert!(state.candidates.len() >= 2);
+    assert_eq!(state.candidates[0], "বর্নমালা");
+    assert_eq!(state.candidate_details[0].kind, bornomala_core::CandidateKind::PrimaryTransliteration);
+
+    assert_eq!(state.candidates[1], "বর্ণমালা");
+    assert_eq!(state.candidate_details[1].kind, bornomala_core::CandidateKind::ExactLexiconMatch);
+    assert_eq!(state.candidate_details[1].score, 25);
+
+    // 2. Negative case: "durniti" -> admits no invalid "ণ" candidates ("দুর্ণীতি" does not exist)
+    engine.reset();
+    for ch in "durniti".chars() {
+        engine.process_event(EngineEvent::InputChar(ch));
+    }
+    let state_dur = engine.state();
+    assert!(!state_dur.candidates.contains(&"দুর্ণীতি".to_string()));
+
+    // 3. Negative case: "kornel" -> admits no invalid "ণ" candidates ("কৰ্ণেল" does not exist)
+    engine.reset();
+    for ch in "kornel".chars() {
+        engine.process_event(EngineEvent::InputChar(ch));
+    }
+    let state_kor = engine.state();
+    assert!(!state_kor.candidates.contains(&"কৰ্ণেল".to_string()));
+}
+

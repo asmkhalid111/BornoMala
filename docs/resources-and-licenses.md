@@ -34,7 +34,7 @@ The raw Leipzig word corpus is processed using `scripts/prepare_lexicon.py`:
 2. **Script Validation:** Retains only words composed strictly of assigned Bengali Unicode code points (U+0980..=U+09FF) and valid joiners (ZWJ U+200D, ZWNJ U+200C). ASCII tokens, numbers, and non-Bengali symbols are discarded.
 3. **Frequency Aggregation:** Identical NFC strings have their observed frequencies aggregated.
 4. **Hapax Legomena Elimination:** Infrequent words with frequency $< 3$ are purged.
-5. **Final Curation:** The top 40,000 frequency-ranked words are packed into `lexicon.bin`.
+5. **Final Curation:** The top 40,001 frequency-ranked words are packed into `lexicon.bin`.
 
 ---
 
@@ -47,7 +47,7 @@ The raw Leipzig word corpus is processed using `scripts/prepare_lexicon.py`:
 - **Strict Architectural Boundary:**
   - **No Hunspell data is copied or redistributed into the Borno runtime binary.**
   - `bn_BD.dic` is utilized exclusively as an **offline validation oracle** during preprocessing in `scripts/prepare_lexicon.py`.
-  - It cross-validates that 39.55% of high-frequency Leipzig words correspond to canonical dictionary entries.
+  - It cross-validates that 39.56% of high-frequency Leipzig words correspond to canonical dictionary entries.
   - The compiled runtime binary (`lexicon.bin`) and runtime data structures contain exclusively CC BY 4.0 derived data from the Leipzig Corpora Collection.
 
 ---
@@ -57,5 +57,5 @@ The raw Leipzig word corpus is processed using `scripts/prepare_lexicon.py`:
 | Artifact | Location | Size | SHA-256 Checksum | License |
 |---|---|---|---|---|
 | Raw Leipzig Archive | `scripts/.cache/ben_news_2020_300K.tar.gz` | ~16 MB | `7624300acee975a4344510bdacb000dd63c6709aa76ef3e922805c031bc22b49` | CC BY 4.0 |
-| Compiled Binary Lexicon | `crates/borno-core/data/lexicon.bin` | `1,116,596` bytes | `97db33d26ec1a5b358103f5945f95b0a7d9610db979991f1f7a47fe94f383288` | CC BY 4.0 (Derived) |
+| Compiled Binary Lexicon | `crates/borno-core/data/lexicon.bin` | `1,116,626` bytes | `de2ea1e227f92eca810cfe899af3b052ae7366225eedae08494fc2a8c412f9c7` | CC BY 4.0 (Derived) |
 | Lexicon Manifest | `docs/lexicon_provenance.json` | - | - | CC BY 4.0 / MIT |

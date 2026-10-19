@@ -26,6 +26,8 @@ class CandidateWindow {
     int32_t m_selectedIndex;
     std::function<void(size_t)> m_onSelectCallback;
     int m_dpi;
+    int32_t m_fontSizePt;
+    std::string m_theme;
 
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     void OnPaint(HWND hwnd);
@@ -41,6 +43,12 @@ public:
     void Show(bool show);
     bool IsVisible() const;
     size_t GetCandidateCount() const { return m_candidates.size(); }
+
+    void SetFontSize(int32_t fontSizePt) { m_fontSizePt = fontSizePt; }
+    void SetTheme(const std::string& theme) { m_theme = theme; }
+
+    int GetRowHeight() const;
+    int GetWindowWidth() const;
 
     void SetSelectCallback(std::function<void(size_t)> callback) {
         m_onSelectCallback = callback;

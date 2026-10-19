@@ -1,9 +1,68 @@
 #include "engine.h"
 #include <cstring>
+#include <cstdlib>
+#include <fstream>
+#include <sstream>
+#include <sys/stat.h>
 #include <fcitx-utils/keysymgen.h>
 #include <fcitx-utils/log.h>
 
 namespace bornomala {
+
+static std::string GetLinuxConfigPath() {
+    const char* home = std::getenv("HOME");
+    if (home) {
+        return std::string(home) + "/.config/com.bornomala.desktop/config.json";
+    }
+    return "";
+}
+
+// Platform Boundary Note (Linux Fcitx 5):
+// Candidate window themes (Dark Glass, Light Glass, High Contrast), font sizes, and layout
+// orientations are strictly host-controlled by the desktop Fcitx 5 theme (e.g. Kimpanel,
+// Classic UI theme, or KDE Plasma theme) under the Freedesktop / XDG desktop specification.
+// The Rust core engine configuration (auto_convert_period_to_dari, linguistic ambiguity,
+// candidate display limits, and fixed layouts) is fully honored and synchronized via
+// borno_engine_configure_json.
+static void CheckAndReloadLinuxConfig(BornoEngineHandle* engine, LinuxConfigMetadata& meta) {
+    std::string path = GetLinuxConfigPath();
+    if (path.empty()) return;
+
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0) return;
+
+    if (st.st_mtime == meta.lastMtime && st.st_size == meta.fileSize) {
+        return;
+    }
+
+    std::ifstream file(path);
+    if (!file.is_open()) return;
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string content = buffer.str();
+
+    uint32_t hash = 5381;
+    for (unsigned char c : content) {
+        hash = ((hash << 5) + hash) + c;
+    }
+
+    if (hash == meta.simpleHash) {
+        meta.lastMtime = st.st_mtime;
+        meta.fileSize = st.st_size;
+        return;
+    }
+
+    if (engine) {
+        int32_t rc = borno_engine_configure_json(engine, content.c_str());
+        if (rc == BORNO_OK) {
+            meta.lastMtime = st.st_mtime;
+            meta.fileSize = st.st_size;
+            meta.simpleHash = hash;
+            FCITX_INFO() << "[Borno] Synchronized engine configuration from " << path;
+        }
+    }
+}
 
 static const char* GetCandidateComment(int32_t kind) {
     switch (kind) {
@@ -407,6 +466,9 @@ void BornoEngine::activate(const fcitx::InputMethodEntry& entry, fcitx::InputCon
     if (!ic) return;
     auto* prop = ic->propertyFor(&m_factory);
     if (prop) {
+        if (prop->engine()) {
+            CheckAndReloadLinuxConfig(prop->engine(), m_configMeta);
+        }
         if (!prop->isComposing()) {
             prop->setMode(m_globalMode);
         }

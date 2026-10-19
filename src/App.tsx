@@ -98,18 +98,45 @@ export function App() {
     loadConfig();
   }, [loadStatus, loadConfig]);
 
+  useEffect(() => {
+    if (config?.active_theme) {
+      document.documentElement.setAttribute("data-theme", config.active_theme);
+    }
+  }, [config?.active_theme]);
+
   const handleSaveConfig = async (newConfig: BornoConfig) => {
-    if (!inTauri) return;
+    if (!inTauri) {
+      setConfig(newConfig);
+      return;
+    }
     const saved = await invoke<BornoConfig>("save_config", { config: newConfig });
     setConfig(saved);
   };
 
   const handleResetConfig = async () => {
     if (!inTauri) return;
-    const res = await invoke<ConfigResponse>("reset_config");
+    const res = await invoke<ConfigResponse>("reset_config_to_defaults");
     setConfig(res.config);
     setPersistenceStatus(res.status);
     setConfigPath(res.config_path);
+  };
+
+  const handleExportConfig = async (): Promise<string> => {
+    if (!inTauri) {
+      return JSON.stringify(config, null, 2);
+    }
+    return await invoke<string>("export_config", { path: null });
+  };
+
+  const handleImportConfig = async (jsonOrPath: string): Promise<BornoConfig> => {
+    if (!inTauri) {
+      const parsed = JSON.parse(jsonOrPath);
+      setConfig(parsed);
+      return parsed;
+    }
+    const imported = await invoke<BornoConfig>("import_config", { jsonOrPath });
+    setConfig(imported);
+    return imported;
   };
 
   const dispatchEvent = useCallback(async (event: EngineEvent, label: string) => {
@@ -343,11 +370,15 @@ export function App() {
         configPath={configPath}
         onSave={handleSaveConfig}
         onReset={handleResetConfig}
+        onExport={handleExportConfig}
+        onImport={handleImportConfig}
       />
 
       <SandboxTypingArea
         engineState={engineState}
         committedHistory={committedHistory}
+        candidateOrientation={config?.candidate_orientation}
+        candidateFontSize={config?.candidate_font_size}
         onSendChar={handleSendChar}
         onBackspace={handleBackspace}
         onDelete={handleDelete}

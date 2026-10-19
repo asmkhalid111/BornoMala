@@ -4,14 +4,21 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%20TSF%20%7C%20Linux%20Fcitx%205-0078d7.svg)](https://github.com/asmkhalid111/BornoMala)
 [![Tauri](https://img.shields.io/badge/Tauri-v2-24c8db.svg)](https://tauri.app/)
 [![License](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](#license)
-[![Tests](https://img.shields.io/badge/Tests-142%20Core%20%7C%20All%20Passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-238%20Core%20%7C%20All%20Passing-brightgreen.svg)](#getting-started)
+[![UX Baseline](https://img.shields.io/badge/UX%20Baseline-UX%200.1.0-blueviolet.svg)](docs/design-system-and-usability.md)
+[![Config Schema](https://img.shields.io/badge/Config%20Schema-v1.2.0-informational.svg)](crates/bornomala-core/src/config.rs)
 
 **BornoMala (বর্ণমালা)** is a fast, modular, offline-first, and privacy-conscious Bangla input platform for desktop operating systems.
 
 It unifies multiple Bangla typing layouts — **Phonetic transliteration**, **National (Jatiyo)**, **Probhat**, and **Bijoy** — behind a shared, high-performance Rust core engine. BornoMala ships as:
 1. **Windows Native TSF In-Process IME** (`bornomala_tsf.dll`) for system-wide typing in all Windows applications.
 2. **Linux Native Fcitx 5 Addon** (`bornomala.so`) for system-wide typing across Linux desktop environments (GNOME, KDE, X11, Wayland/WSLg).
-3. **Desktop Sandbox & Configuration App** (`bornomala-desktop`) built with Tauri v2 + React 18 + TypeScript.
+3. **Desktop Sandbox & Configuration App** (`Borno-Sandbox.exe`) built with Tauri v2 + React 18 + TypeScript.
+
+The project follows a **three-tier decoupled versioning architecture**:
+- **Product Milestone Pathway:** Targeted towards `v1.0.0` release per [`ROADMAP.md`](./ROADMAP.md).
+- **Design System & UX Framework:** Baseline `UX 0.1.0` defined in [`docs/design-system-and-usability.md`](./docs/design-system-and-usability.md).
+- **Configuration Schema:** Schema `v1.2.0` with atomic failure-safe persistence in `crates/bornomala-core/src/config.rs`.
 
 ---
 
@@ -99,11 +106,12 @@ It unifies multiple Bangla typing layouts — **Phonetic transliteration**, **Na
 
 ```
 .
+├── Borno-Sandbox.exe           # Pre-compiled standalone portable Windows desktop app
 ├── crates/
 │   └── bornomala-core/         # Pure Rust core input engine, layouts, dictionary, and C-ABI
 │       ├── include/            # C headers (bornomala.h, borno.h)
 │       ├── src/                # Engine, normalizer, translit, layout, and dictionary code
-│       └── tests/              # 142 comprehensive unit, contract, layout, and golden tests
+│       └── tests/              # 238 comprehensive unit, contract, layout, and golden tests
 ├── native/
 │   ├── borno-tsf/              # Windows Text Services Framework (TSF) in-process C++ COM IME
 │   │   ├── borno_tsf.cpp       # ITfTextInputProcessorEx, ITfKeyEventSink, COM server
@@ -117,8 +125,13 @@ It unifies multiple Bangla typing layouts — **Phonetic transliteration**, **Na
 │       └── tests/              # Headless verification suite (Layers 1–6)
 ├── src-tauri/                  # Desktop application backend (Tauri v2, config persistence)
 ├── src/                        # Desktop UI frontend (React 18, Vite, TypeScript, Vanilla CSS)
-├── docs/                       # Architecture, engine contract, and usability backlogs
-├── milestones/                 # Verified milestone specifications and completion reports (M0–M8)
+├── docs/                       # Specifications, architecture, and usability backlogs
+│   ├── design-system-and-usability.md # Living UX/design spec, tokens, and a11y criteria
+│   ├── usability-and-linguistic-backlog.md # Usability bug tracking & ergonomic test cases
+│   ├── engine-contract.md      # State machine and event dispatch contract
+│   ├── unicode-composition.md  # Unicode normalization & grapheme cluster rules
+│   └── windows-tsf-architecture.md # Native Windows TSF COM architecture
+├── milestones/                 # Verified milestone specifications and completion reports (M0–M9)
 ├── ROADMAP.md                  # Master roadmap and milestone pathway through v1.0.0
 ├── AGENTS.md                   # Persistent operating rules for AI coding agents
 └── LICENSE-MIT / LICENSE-APACHE # Dual open-source licenses
@@ -128,13 +141,19 @@ It unifies multiple Bangla typing layouts — **Phonetic transliteration**, **Na
 
 ## Getting Started
 
-### 1. Run Automated Rust Core Tests (142 Tests)
+### 1. Run Automated Rust Core Tests (238 Tests)
 
 ```powershell
 cargo test -p bornomala-core
 ```
 
-### 2. Windows: Build and Register Native TSF IME
+### 2. Run Pre-Compiled Windows Portable Sandbox
+
+For instant local testing on Windows without compiling from source:
+- Double-click [`Borno-Sandbox.exe`](./Borno-Sandbox.exe) in the repository root.
+- The standalone desktop application will launch immediately with full Rust core bindings, layout switcher, candidate panel, and virtual keyboard.
+
+### 3. Windows: Build and Register Native TSF IME
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File "native/borno-tsf/build.ps1"
@@ -145,7 +164,7 @@ To register the IME system-wide:
 2. Press `Win + Space` in any application to select **BornoMala Bangla**.
 3. Press `F12` to toggle modes (Phonetic, National, Probhat, Bijoy, English).
 
-### 3. Linux: Build and Install Fcitx 5 Addon
+### 4. Linux: Build and Install Fcitx 5 Addon
 
 ```bash
 # Build static core & Fcitx 5 addon
@@ -160,7 +179,7 @@ To test interactively on Linux or Windows WSL2:
 - Run `Launch-Linux-Fcitx5-Test.bat` from Windows (or `python3 native/bornomala-fcitx5/scripts/interactive_tester.py` inside Linux).
 - Press `F12` or `F4` to cycle typing modes.
 
-### 4. Launch Desktop Sandbox & Settings App
+### 5. Launch Desktop Sandbox in Development Mode
 
 ```powershell
 npm run tauri dev
@@ -180,7 +199,10 @@ npm run tauri dev
 - [x] **M6 — Dictionary & Correction:** Trie-based prefix completions, typo corrections, and phonetic ambiguity pipeline.
 - [x] **M7 — First Native Windows IME (TSF):** Full Windows Text Services Framework in-process COM IME with floating candidate UI.
 - [x] **M8 — Linux Integration (Fcitx 5):** Native C++ input method engine addon for Linux desktops with candidate popups, preedit underline, and fontconfig setup.
-- [ ] **M9 — Customization & Usability (Next Milestone):** Shortcut customization, candidate typography, layout export, and phonetic punctuation enhancements ([`docs/usability-and-linguistic-backlog.md`](./docs/usability-and-linguistic-backlog.md)).
+- [x] **M9 — Customization & Usability:** Schema-versioned config (`v1.2.0`), candidate orientation/typography preferences, themes (Dark Glass, Light Glass, High Contrast OLED), Dari punctuation toggle (`..` $\to$ `।`), and authoritative `UX 0.1.0` living design specification ([`docs/design-system-and-usability.md`](./docs/design-system-and-usability.md)).
+- [ ] **M10 — Contextual Prediction (Optional, Evidence-Gated):** Reproducible Python evaluation pipeline, offline next-word prediction quality/latency benchmarks, and candidate integration assessment.
+
+> **Note on UX Evolution:** Ongoing visual and ergonomic refinements (e.g. multi-accent color selectors, light theme contrast enhancements, and 1-press down-arrow candidate selection) are systematically cataloged in [`docs/usability-and-linguistic-backlog.md`](./docs/usability-and-linguistic-backlog.md) and governed by [`docs/design-system-and-usability.md`](./docs/design-system-and-usability.md).
 
 See [`ROADMAP.md`](./ROADMAP.md) for the complete engineering pathway.
 

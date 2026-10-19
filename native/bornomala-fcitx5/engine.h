@@ -53,6 +53,12 @@ private:
     size_t m_candidatesCount{0};
 };
 
+struct LinuxConfigMetadata {
+    time_t lastMtime{0};
+    off_t fileSize{0};
+    uint32_t simpleHash{0};
+};
+
 class BornoEngine : public fcitx::InputMethodEngineV2 {
 public:
     explicit BornoEngine(fcitx::Instance* instance);
@@ -79,6 +85,7 @@ private:
     fcitx::Instance* m_instance;
     fcitx::FactoryFor<BornoContextProperty> m_factory;
     int32_t m_globalMode{BORNO_MODE_PHONETIC};
+    LinuxConfigMetadata m_configMeta{};
 };
 
 class BornoEngineFactory : public fcitx::AddonFactory {

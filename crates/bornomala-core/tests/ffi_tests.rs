@@ -328,3 +328,82 @@ fn test_ffi_candidate_kind_accessor() {
     }
 }
 
+#[test]
+fn test_ffi_engine_configure_json() {
+    unsafe {
+        let handle = borno_engine_new();
+        assert!(!handle.is_null());
+
+        // 1. NULL pointer safety
+        assert_eq!(borno_engine_configure_json(ptr::null_mut(), ptr::null()), BORNO_ERR_NULL_PTR);
+        let valid_json = CString::new(r#"{"schema_version":"1.2.0"}"#).unwrap();
+        assert_eq!(borno_engine_configure_json(ptr::null_mut(), valid_json.as_ptr()), BORNO_ERR_NULL_PTR);
+        assert_eq!(borno_engine_configure_json(handle, ptr::null()), BORNO_ERR_NULL_PTR);
+
+        // 2. Valid v1.2.0 JSON
+        let cfg_v12 = CString::new(r#"{
+            "schema_version": "1.2.0",
+            "candidate_display_limit": 7,
+            "max_dictionary_suggestions": 4,
+            "auto_convert_period_to_dari": false,
+            "candidate_orientation": "horizontal",
+            "candidate_font_size": 16,
+            "active_theme": "dark-glass",
+            "mode_toggle_key": "F12"
+        }"#).unwrap();
+        assert_eq!(borno_engine_configure_json(handle, cfg_v12.as_ptr()), BORNO_OK);
+
+        // 3. Valid v1.0.0 Legacy JSON migration
+        let cfg_v10 = CString::new(r#"{
+            "schema_version": "1.0.0",
+            "candidate_display_limit": 3
+        }"#).unwrap();
+        assert_eq!(borno_engine_configure_json(handle, cfg_v10.as_ptr()), BORNO_OK);
+
+        // 4. Unsupported schema version
+        let cfg_unsupported = CString::new(r#"{"schema_version":"2.0.0"}"#).unwrap();
+        assert_eq!(borno_engine_configure_json(handle, cfg_unsupported.as_ptr()), BORNO_ERR_UNSUPPORTED_SCHEMA);
+
+        // 5. Malformed JSON
+        let cfg_malformed = CString::new(r#"{bad json"#).unwrap();
+        assert_eq!(borno_engine_configure_json(handle, cfg_malformed.as_ptr()), BORNO_ERR_INVALID_CONFIG);
+
+        // 6. Validation error (candidate_display_limit = 15 out of range 1..=9)
+        let cfg_invalid = CString::new(r#"{"schema_version":"1.2.0","candidate_display_limit":15}"#).unwrap();
+        assert_eq!(borno_engine_configure_json(handle, cfg_invalid.as_ptr()), BORNO_ERR_INVALID_CONFIG);
+
+        // 7. Reconfiguration preserves active composition
+        let mut state = BornoStateC {
+            preedit: ptr::null_mut(),
+            raw_buffer: ptr::null_mut(),
+            cursor_pos: 0,
+            candidates_count: 0,
+            candidates: ptr::null_mut(),
+            selected_candidate_index: -1,
+            is_composing: false,
+            mode: 0,
+        };
+        borno_engine_process_char(handle, 'k' as u32, &mut state);
+        assert!(state.is_composing);
+        let preedit_before = CStr::from_ptr(state.preedit).to_str().unwrap().to_string();
+        assert_eq!(preedit_before, "ক");
+
+        // Reconfigure while composing
+        assert_eq!(borno_engine_configure_json(handle, cfg_v12.as_ptr()), BORNO_OK);
+
+        // Verify preedit is still active in engine
+        let mut status = BornoStatusC {
+            name: ptr::null_mut(),
+            version: ptr::null_mut(),
+            active_mode: ptr::null_mut(),
+            ready: false,
+        };
+        borno_engine_get_status(handle, &mut status);
+        assert!(status.ready);
+
+        borno_status_free_members(&mut status);
+        borno_state_free_members(&mut state);
+        borno_engine_free(handle);
+    }
+}
+
