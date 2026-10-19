@@ -44,3 +44,14 @@ compile_flags.txt
 scripts/.cache/
 *.tar.gz
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Native / CMake Build Artifacts
+**/build/
+*.so
+*.a
+*.o
+

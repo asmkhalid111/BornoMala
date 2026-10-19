@@ -1,0 +1,7 @@
+[InputMethod]
+Name=bornomala
+Icon=bornomala
+Label=বর্ণমালা
+LangCode=bn
+Addon=bornomala
+Configurable=False

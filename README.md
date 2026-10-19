@@ -1,31 +1,41 @@
 # BornoMala (বর্ণমালা) — Bangla Input Platform
 
 [![Rust](https://img.shields.io/badge/Rust-1.99.1%2B-orange.svg)](https://www.rust-lang.org/)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20TSF-0078d7.svg)](https://docs.microsoft.com/en-us/windows/win32/tsf/text-services-framework)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20TSF%20%7C%20Linux%20Fcitx%205-0078d7.svg)](https://github.com/asmkhalid111/BornoMala)
 [![Tauri](https://img.shields.io/badge/Tauri-v2-24c8db.svg)](https://tauri.app/)
 [![License](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](#license)
-[![Tests](https://img.shields.io/badge/Tests-229%20Passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-142%20Core%20%7C%20All%20Passing-brightgreen.svg)](#testing)
 
 **BornoMala (বর্ণমালা)** is a fast, modular, offline-first, and privacy-conscious Bangla input platform for desktop operating systems.
 
-It unifies multiple Bangla typing layouts — **Phonetic transliteration**, **National (Jatiyo)**, **Probhat**, and **Bijoy** — behind a shared, high-performance Rust core engine. BornoMala ships both as a **native Windows Text Services Framework (TSF) in-process IME** for system-wide typing in any Windows application, and as an interactive **desktop sandbox & configuration application**.
+It unifies multiple Bangla typing layouts — **Phonetic transliteration**, **National (Jatiyo)**, **Probhat**, and **Bijoy** — behind a shared, high-performance Rust core engine. BornoMala ships as:
+1. **Windows Native TSF In-Process IME** (`bornomala_tsf.dll`) for system-wide typing in all Windows applications.
+2. **Linux Native Fcitx 5 Addon** (`bornomala.so`) for system-wide typing across Linux desktop environments (GNOME, KDE, X11, Wayland/WSLg).
+3. **Desktop Sandbox & Configuration App** (`bornomala-desktop`) built with Tauri v2 + React 18 + TypeScript.
 
 ---
 
 ## Key Features
 
 - **⚡ Blazing Fast Rust Engine (`bornomala-core`):**
-  - Sub-millisecond keystroke processing latency (< 0.25 ms average).
+  - Sub-millisecond keystroke processing latency (< 0.25 ms average, 3.4 µs pure core).
   - Canonical Unicode NFC normalization, vowel sign collapsing, and conjunct joiner preservation (ZWJ/ZWNJ).
   - Trie-based predictive completions and Levenshtein typo-correction for Phonetic typing.
   - 100% safe Rust core with a clean C-ABI (`bornomala.h`).
 
-- **🪟 Native Windows TSF In-Process IME (`bornomala_tsf.dll`):**
-  - Full Text Services Framework (TSF) COM in-process text service.
+- **🪟 Native Windows TSF In-Process IME (`native/borno-tsf`):**
+  - Full Text Services Framework (TSF) COM in-process text service (`bornomala_tsf.dll`).
   - Works natively across Windows Notepad, Sublime Text, Office, Visual Studio Code, browsers, and terminal emulators.
   - Real-time preedit inline composition with accurate caret tracking.
   - Floating GDI candidate window with mouse and keyboard navigation (1–9 digits, arrows, space/enter commit).
   - Language bar integration and instant mode toggling (`F12`).
+
+- **🐧 Native Linux Fcitx 5 Addon (`native/bornomala-fcitx5`):**
+  - Native C++ input method engine addon (`bornomala.so`) statically linked against `libbornomala_core.a`.
+  - Seamless integration with Fcitx 5 across GTK3, GTK4, Qt5, Qt6, X11, and Wayland/WSLg.
+  - Inline preedit formatting with underline styling and cursor offset mapping across multi-byte UTF-8 boundaries.
+  - Desktop floating candidate list with classification badges (`transliteration`, `lexicon`, `spelling`).
+  - Instant layout cycling with `F12` or `F4`.
 
 - **🎨 Desktop Sandbox & Configuration App (`bornomala-desktop`):**
   - Built with Tauri v2 + React 18 + TypeScript.
@@ -47,40 +57,40 @@ It unifies multiple Bangla typing layouts — **Phonetic transliteration**, **Na
 | 🏛️ | **National (Jatiyo)** | Bangladesh Standard BDS 1738:2018 layout with `Link (G)` conjunct chaining and AltGr currency symbols. |
 | 🌅 | **Probhat** | Established open-source layout with direct independent vowel access and standard conjuncts. |
 | ⌨️ | **Bijoy** | Widely used legacy layout with `Link (G)` conjunct sequencing, emitting standardized Unicode NFC. |
-| 🔤 | **English** | Clean passthrough mode (`F12` quick toggle) for zero-latency English typing. |
+| 🔤 | **English** | Clean passthrough mode (`F12` or `F4` quick toggle) for zero-latency English typing. |
 
 ---
 
 ## Architecture Overview
 
 ```
-                               ┌──────────────────────────────────────────────┐
-                               │       BornoMala Bangla Input Platform        │
-                               └──────────────────────┬───────────────────────┘
-                                                      │
-                       ┌──────────────────────────────┴──────────────────────────────┐
-                       │                                                             │
-        ┌──────────────▼──────────────┐                               ┌──────────────▼──────────────┐
-        │  Windows Native TSF IME     │                               │ Desktop Sandbox & Settings  │
-        │  (native/borno-tsf)         │                               │ (src-tauri & src/ UI)       │
-        │  • bornomala_tsf.dll        │                               │ • Tauri v2 + React + TS     │
-        │  • In-Process COM TIP       │                               │ • Virtual keyboard preview  │
-        │  • Floating Candidate UI    │                               │ • Event logging & inspector │
-        │  • Language Bar Controller  │                               │ • Config JSON persistence   │
-        └──────────────┬──────────────┘                               └──────────────┬──────────────┘
-                       │                                                             │
-                       │ C-ABI (crates/bornomala-core/include/bornomala.h)            │ Rust FFI / Tauri IPC
-                       └──────────────────────────────┬──────────────────────────────┘
-                                                      │
-                                       ┌──────────────▼──────────────┐
-                                       │    bornomala-core (Rust)    │
-                                       │  • Phonetic Transliteration │
-                                       │  • National / Probhat /     │
-                                       │    Bijoy Fixed Layouts      │
-                                       │  • Unicode NFC Normalizer   │
-                                       │  • Trie & Typo Dictionary   │
-                                       │  • State Machine & C-ABI    │
-                                       └─────────────────────────────┘
+                               ┌────────────────────────────────────────────────────────┐
+                               │            BornoMala Bangla Input Platform             │
+                               └───────────────────────────┬────────────────────────────┘
+                                                           │
+                        ┌──────────────────────────────────┼──────────────────────────────────┐
+                        │                                  │                                  │
+         ┌──────────────▼──────────────┐    ┌──────────────▼──────────────┐    ┌──────────────▼──────────────┐
+         │  Windows Native TSF IME     │    │  Linux Native Fcitx 5 Addon │    │ Desktop Sandbox & Settings  │
+         │  (native/borno-tsf)         │    │  (native/bornomala-fcitx5)  │    │ (src-tauri & src/ UI)       │
+         │  • bornomala_tsf.dll        │    │  • bornomala.so             │    │ • Tauri v2 + React + TS     │
+         │  • In-Process COM TIP       │    │  • Fcitx 5 InputMethodEngine│    │ • Virtual keyboard preview  │
+         │  • Floating Candidate UI    │    │  • Preedit Underline Format │    │ • Event logging & inspector │
+         │  • Language Bar Controller  │    │  • Floating Candidate Popup │    │ • Config JSON persistence   │
+         └──────────────┬──────────────┘    └──────────────┬──────────────┘    └──────────────┬──────────────┘
+                        │                                  │                                  │
+                        │ C-ABI                            │ C-ABI                            │ Rust FFI / Tauri IPC
+                        └──────────────────────────────────┼──────────────────────────────────┘
+                                                           │
+                                            ┌──────────────▼──────────────┐
+                                            │    bornomala-core (Rust)    │
+                                            │  • Phonetic Transliteration │
+                                            │  • National / Probhat /     │
+                                            │    Bijoy Fixed Layouts      │
+                                            │  • Unicode NFC Normalizer   │
+                                            │  • Trie & Typo Dictionary   │
+                                            │  • State Machine & C-ABI    │
+                                            └─────────────────────────────┘
 ```
 
 ---
@@ -93,19 +103,22 @@ It unifies multiple Bangla typing layouts — **Phonetic transliteration**, **Na
 │   └── bornomala-core/         # Pure Rust core input engine, layouts, dictionary, and C-ABI
 │       ├── include/            # C headers (bornomala.h, borno.h)
 │       ├── src/                # Engine, normalizer, translit, layout, and dictionary code
-│       └── tests/              # 221 comprehensive unit, contract, layout, and golden tests
+│       └── tests/              # 142 comprehensive unit, contract, layout, and golden tests
 ├── native/
-│   └── borno-tsf/              # Windows Text Services Framework (TSF) in-process C++ COM IME
-│       ├── borno_tsf.cpp       # ITfTextInputProcessorEx, ITfKeyEventSink, COM server
-│       ├── candidate_window.h  # Floating candidate UI with GDI rendering & caret tracking
-│       ├── lang_bar_item.h     # Language bar status and mode button
-│       ├── key_mapper.h        # Virtual-key to Borno physical-key translation
-│       ├── test_harness.cpp    # Standalone native Level 1–4 verification harness
-│       ├── build.ps1           # Automated build script (MinGW-w64 G++ & cargo)
-│       └── scripts/            # Elevated register.bat & unregister.bat
+│   ├── borno-tsf/              # Windows Text Services Framework (TSF) in-process C++ COM IME
+│   │   ├── borno_tsf.cpp       # ITfTextInputProcessorEx, ITfKeyEventSink, COM server
+│   │   ├── candidate_window.h  # Floating candidate UI with GDI rendering & caret tracking
+│   │   ├── lang_bar_item.h     # Language bar status and mode button
+│   │   └── scripts/            # Elevated register.bat & unregister.bat
+│   └── bornomala-fcitx5/       # Linux Fcitx 5 C++ input method engine addon
+│       ├── bornomala.cpp       # Fcitx 5 InputMethodEngineV2 implementation
+│       ├── engine_adapter.h    # State machine binding & codepoint-to-byte offset mapper
+│       ├── scripts/            # build.sh, install.sh, interactive_tester.py
+│       └── tests/              # Headless verification suite (Layers 1–6)
 ├── src-tauri/                  # Desktop application backend (Tauri v2, config persistence)
 ├── src/                        # Desktop UI frontend (React 18, Vite, TypeScript, Vanilla CSS)
-├── milestones/                 # Verified milestone specifications and completion reports (M0–M7)
+├── docs/                       # Architecture, engine contract, and usability backlogs
+├── milestones/                 # Verified milestone specifications and completion reports (M0–M8)
 ├── ROADMAP.md                  # Master roadmap and milestone pathway through v1.0.0
 ├── AGENTS.md                   # Persistent operating rules for AI coding agents
 └── LICENSE-MIT / LICENSE-APACHE # Dual open-source licenses
@@ -115,66 +128,59 @@ It unifies multiple Bangla typing layouts — **Phonetic transliteration**, **Na
 
 ## Getting Started
 
-### Prerequisites (Windows x64)
+### 1. Run Automated Rust Core Tests (142 Tests)
 
-- **Rust Toolchain:** `1.99.1+` (`x86_64-pc-windows-gnu` via rustup)
-- **C++ Compiler:** MinGW-w64 GCC (`16.2.0` or similar with UCRT, e.g. via WinLibs)
-- **Node.js:** `v20+` or `v22+` with `npm`
-- **WebView2:** Microsoft Edge WebView2 Runtime (preinstalled on Windows 10/11)
-
-### 1. Run Automated Test Suite (229 Tests)
-
-Run all 221 engine tests in the Rust core:
 ```powershell
 cargo test -p bornomala-core
 ```
 
-Run persistence and integration tests in the desktop runner:
-```powershell
-cargo run -p bornomala-desktop --bin persistence_suite
-```
+### 2. Windows: Build and Register Native TSF IME
 
-### 2. Build and Verify the Native Windows TSF IME
-
-Compile the Rust static library, native C++ in-process DLL, and run the native verification harness:
 ```powershell
 powershell -ExecutionPolicy Bypass -File "native/borno-tsf/build.ps1"
 ```
 
 To register the IME system-wide:
-1. Open `native/borno-tsf/scripts/`.
-2. Right-click `register.bat` and choose **"Run as administrator"**.
-3. Open Windows Notepad, Sublime Text, or any editor, press `Win + Space` to select **BornoMala Bangla**, and start typing!
-4. Press `F12` to cycle between Phonetic, National, Probhat, Bijoy, and English modes.
+1. Run `native/borno-tsf/scripts/register.bat` as Administrator.
+2. Press `Win + Space` in any application to select **BornoMala Bangla**.
+3. Press `F12` to toggle modes (Phonetic, National, Probhat, Bijoy, English).
 
-To unregister:
-- Right-click `native/borno-tsf/scripts/unregister.bat` and choose **"Run as administrator"**.
+### 3. Linux: Build and Install Fcitx 5 Addon
 
-### 3. Launch the Desktop Sandbox & Settings App
+```bash
+# Build static core & Fcitx 5 addon
+cd native/bornomala-fcitx5
+./scripts/build.sh
 
-Run the development sandbox:
+# User-mode installation (no root required)
+./scripts/install.sh
+```
+
+To test interactively on Linux or Windows WSL2:
+- Run `Launch-Linux-Fcitx5-Test.bat` from Windows (or `python3 native/bornomala-fcitx5/scripts/interactive_tester.py` inside Linux).
+- Press `F12` or `F4` to cycle typing modes.
+
+### 4. Launch Desktop Sandbox & Settings App
+
 ```powershell
 npm run tauri dev
 ```
 
-Or build the release desktop binary:
-```powershell
-npm run build:app
-```
-
 ---
 
-## Roadmap
+## Roadmap & Milestone Progress
 
 - [x] **M0 — Runnable Foundation:** Sandbox desktop app, Rust core, and CI baseline.
-- [x] **M1 — Engine Contract & Deterministic Sandbox:** Formal engine state machine, event streams, and C-ABI.
-- [x] **M2 — Phonetic Engine:** Avro-compatible phonetic transliteration, candidate generation, and conjunct parser.
-- [x] **M3 — Unicode & Bangla Script Normalization:** Strict NFC canonical normalization, virama collapsing, and joiner safety.
-- [x] **M4 — Fixed Keyboard Layouts:** National (Jatiyo), Probhat, and Bijoy layouts with physical key mappings.
-- [x] **M5 — Dictionary Engine & Predictive Lexicon:** Trie-based prefix completions, typo corrections, and frequency ranking.
-- [x] **M6 — Settings Persistence & User Customization:** Schema-versioned JSON config with deep fallback isolation.
-- [x] **M7 — First Native Windows IME (TSF):** Full Windows Text Services Framework in-process COM IME with candidate UI.
-- [ ] **M8 — Next Milestone:** Continued enhancements, packaging, and platform expansion.
+- [x] **M0.1 — Native Feasibility:** Windows TSF COM architecture spike and C-ABI boundary.
+- [x] **M1 — Engine Contract & Sandbox:** State machine, event dispatch, and inspectable candidate UI.
+- [x] **M2 — Unicode & Composition Foundation:** Strict NFC canonical normalization, virama collapsing, and joiner safety.
+- [x] **M3 — Phonetic Input v1:** Avro-compatible phonetic transliteration, candidate generation, and conjunct matrix.
+- [x] **M4 — Fixed Layouts:** National (Jatiyo), Probhat, and Bijoy layouts with physical key mappings.
+- [x] **M5 — Settings Foundation:** Schema-versioned JSON config with deep fallback isolation and Settings Drawer.
+- [x] **M6 — Dictionary & Correction:** Trie-based prefix completions, typo corrections, and phonetic ambiguity pipeline.
+- [x] **M7 — First Native Windows IME (TSF):** Full Windows Text Services Framework in-process COM IME with floating candidate UI.
+- [x] **M8 — Linux Integration (Fcitx 5):** Native C++ input method engine addon for Linux desktops with candidate popups, preedit underline, and fontconfig setup.
+- [ ] **M9 — Customization & Usability (Next Milestone):** Shortcut customization, candidate typography, layout export, and phonetic punctuation enhancements ([`docs/usability-and-linguistic-backlog.md`](./docs/usability-and-linguistic-backlog.md)).
 
 See [`ROADMAP.md`](./ROADMAP.md) for the complete engineering pathway.
 

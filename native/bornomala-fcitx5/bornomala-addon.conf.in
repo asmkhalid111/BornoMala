@@ -1,0 +1,9 @@
+[Addon]
+Name=bornomala
+Comment=BornoMala Bangla Input Platform Addon
+Category=InputMethod
+Version=0.1.0
+Type=SharedLibrary
+Library=bornomala
+OnDemand=False
+Configurable=False
