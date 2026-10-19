@@ -26,6 +26,9 @@ Thumbs.db
 !.vscode/extensions.json
 !.vscode/settings.json
 .idea/
+compile_commands.json
+compile_flags.txt
+.clangd
 
 # Environment
 .env

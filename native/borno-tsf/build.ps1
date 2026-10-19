@@ -18,7 +18,8 @@ Push-Location $root
 try {
     cargo build --release -p bornomala-core
     $targetDir = (cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).target_directory
-} finally {
+}
+finally {
     Pop-Location
 }
 
@@ -37,9 +38,11 @@ Write-Host "Using static library: $staticLib" -ForegroundColor Green
 $gppCmd = Get-Command "g++.exe" -ErrorAction SilentlyContinue
 if ($gppCmd) {
     $gpp = $gppCmd.Source
-} elseif (Test-Path "$wingetMinGW\g++.exe") {
+}
+elseif (Test-Path "$wingetMinGW\g++.exe") {
     $gpp = "$wingetMinGW\g++.exe"
-} else {
+}
+else {
     throw "g++.exe not found in PATH or standard MinGW-w64 locations. Please ensure MinGW-w64 GCC is installed."
 }
 Write-Host "Using C++ compiler: $gpp" -ForegroundColor Green
@@ -57,7 +60,8 @@ Write-Host "`n=== 2. Compiling Native TSF COM In-Process DLL (bornomala_tsf.dll)
 # Copy to borno_tsf.dll for backward compatibility
 try {
     Copy-Item "$PSScriptRoot\bornomala_tsf.dll" "$PSScriptRoot\borno_tsf.dll" -Force -ErrorAction Stop
-} catch {
+}
+catch {
     Write-Host "Note: borno_tsf.dll is locked by another process (IME currently in use). bornomala_tsf.dll updated." -ForegroundColor Yellow
 }
 
@@ -72,6 +76,7 @@ Write-Host "`n=== 4. Executing TSF Feasibility Test Harness ===" -ForegroundColo
 Push-Location $PSScriptRoot
 try {
     .\test_harness.exe
-} finally {
+}
+finally {
     Pop-Location
 }
