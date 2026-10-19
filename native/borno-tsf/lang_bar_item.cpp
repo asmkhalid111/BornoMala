@@ -1,3 +1,5 @@
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #include "lang_bar_item.h"
 #include <strsafe.h>
 
