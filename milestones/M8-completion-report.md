@@ -45,9 +45,15 @@ The implementation strictly respects all architectural boundaries and requiremen
 - [`verify_gtk3.py`](file:///e:/Codes/Bangla%20Input%20Platform/Borno%20V1/native/bornomala-fcitx5/tests/verify_gtk3.py) (Layer 6A): Graphical end-to-end integration test creating a GTK3 window, activating BornoMala in Fcitx 5, injecting real X11 key events via `xdotool`, and verifying committed text in `Gtk.Entry`.
 - [`verify_gedit.py`](file:///e:/Codes/Bangla%20Input%20Platform/Borno%20V1/native/bornomala-fcitx5/tests/verify_gedit.py) (Layer 6B): Real GNOME desktop text editor end-to-end test launching Gedit in standalone mode, activating BornoMala in Fcitx 5, injecting keystrokes via `xdotool`, saving via `Ctrl+S`, and asserting committed Unicode text `আমি` written to disk.
 
-### Deployment Scripts (`native/bornomala-fcitx5/scripts/`)
-- [`install.sh`](file:///e:/Codes/Bangla%20Input%20Platform/Borno%20V1/native/bornomala-fcitx5/scripts/install.sh): Builds Rust PIC core, invokes CMake build, installs artifacts to user-mode `~/.local` hierarchy, configures `~/.config/fcitx5/profile`, and restarts the daemon.
-- [`uninstall.sh`](file:///e:/Codes/Bangla%20Input%20Platform/Borno%20V1/native/bornomala-fcitx5/scripts/uninstall.sh): Removes installed artifacts and reloads the daemon.
+### Deployment & Interactive Testing Scripts
+- [`native/bornomala-fcitx5/scripts/install.sh`](file:///e:/Codes/Bangla%20Input%20Platform/Borno%20V1/native/bornomala-fcitx5/scripts/install.sh): Builds Rust PIC core, invokes CMake build, installs artifacts to user-mode `~/.local` hierarchy, configures `~/.config/fcitx5/profile`, and restarts the daemon.
+- [`native/bornomala-fcitx5/scripts/uninstall.sh`](file:///e:/Codes/Bangla%20Input%20Platform/Borno%20V1/native/bornomala-fcitx5/scripts/uninstall.sh): Removes installed artifacts and reloads the daemon.
+- [`native/bornomala-fcitx5/scripts/interactive_tester.py`](file:///e:/Codes/Bangla%20Input%20Platform/Borno%20V1/native/bornomala-fcitx5/scripts/interactive_tester.py): Dedicated GTK3 graphical interactive testing application with live single-line `Gtk.Entry`, multi-line `Gtk.TextView`, font fallback styling, and mode cycling.
+- [`Launch-Linux-Fcitx5-Test.bat`](file:///e:/Codes/Bangla%20Input%20Platform/Borno%20V1/Launch-Linux-Fcitx5-Test.bat): Windows batch runner configuring Indic font caches, launching Fcitx 5 in WSL2, and presenting the interactive tester GUI.
+- [`Launch-Linux-Gedit-Test.bat`](file:///e:/Codes/Bangla%20Input%20Platform/Borno%20V1/Launch-Linux-Gedit-Test.bat): Windows batch runner executing the automated Gedit test suite under WSL2.
+
+### Usability & Acceptance Backlog
+- [`docs/usability-and-linguistic-backlog.md`](file:///e:/Codes/Bangla%20Input%20Platform/Borno%20V1/docs/usability-and-linguistic-backlog.md): Formal tracking document for user-reported typing findings during M8 interactive testing (`BACKLOG-01` Dáñṛi punctuation, `BACKLOG-02` casual vowel ambiguity `tomake` $\to$ `তোমাকে`, `BACKLOG-03` ণ-ত্ব বিধান homophone suggestion `bornomala` $\to$ `বর্ণমালা`).
 
 ---
 
