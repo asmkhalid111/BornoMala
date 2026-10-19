@@ -1,9 +1,9 @@
-# build.ps1 - Builds and tests the native Borno TSF in-process prototype
+# build.ps1 - Builds and tests the native BornoMala Windows TSF in-process text service
 $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path "$PSScriptRoot\..\.."
 
-# Ensure cargo and MinGW-w64 are in PATH if installed in standard locations
+# Ensure cargo and MinGW-w64 are in PATH
 if ($env:USERPROFILE -and (Test-Path "$env:USERPROFILE\.cargo\bin")) {
     $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
 }
@@ -11,6 +11,7 @@ $wingetMinGW = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\BrechtSanders.WinLib
 if (Test-Path $wingetMinGW) {
     $env:PATH = "$wingetMinGW;$env:PATH"
 }
+$env:PATH = $env:PATH + ';' + [Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('PATH', 'User')
 
 Write-Host "=== 1. Building BornoMala Core Static Library (Release) ===" -ForegroundColor Cyan
 Push-Location $root
@@ -57,7 +58,7 @@ Write-Host "`n=== 2. Compiling Native TSF COM In-Process DLL (bornomala_tsf.dll)
 try {
     Copy-Item "$PSScriptRoot\bornomala_tsf.dll" "$PSScriptRoot\borno_tsf.dll" -Force -ErrorAction Stop
 } catch {
-    Write-Host "Note: borno_tsf.dll is locked by another process (IME in use). bornomala_tsf.dll updated." -ForegroundColor Yellow
+    Write-Host "Note: borno_tsf.dll is locked by another process (IME currently in use). bornomala_tsf.dll updated." -ForegroundColor Yellow
 }
 
 Write-Host "`n=== 3. Compiling Standalone TSF Feasibility Test Harness (test_harness.exe) ===" -ForegroundColor Cyan
