@@ -407,3 +407,30 @@ fn test_ffi_engine_configure_json() {
     }
 }
 
+#[test]
+fn test_linux_adapter_privacy_and_portability_invariants() {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let cpp_path = manifest_dir.join("../../native/bornomala-fcitx5/bornomala.cpp");
+    let cmake_path = manifest_dir.join("../../native/bornomala-fcitx5/CMakeLists.txt");
+    let install_path = manifest_dir.join("../../native/bornomala-fcitx5/scripts/install.sh");
+
+    if cpp_path.exists() {
+        let cpp_content = std::fs::read_to_string(&cpp_path).expect("Failed to read bornomala.cpp");
+        // Verify no raw keysyms or user text payloads are logged
+        assert!(!cpp_content.contains("sym=0x"), "Privacy regression: bornomala.cpp logs raw keysyms!");
+        assert!(!cpp_content.contains("preedit='"), "Privacy regression: bornomala.cpp logs preedit text!");
+        assert!(!cpp_content.contains("committed='"), "Privacy regression: bornomala.cpp logs committed text!");
+    }
+
+    if cmake_path.exists() {
+        let cmake_content = std::fs::read_to_string(&cmake_path).expect("Failed to read CMakeLists.txt");
+        assert!(!cmake_content.contains("asmkhalid"), "Portability regression: CMakeLists.txt contains hardcoded username!");
+        assert!(!cmake_content.contains("/home/"), "Portability regression: CMakeLists.txt contains hardcoded home path!");
+    }
+
+    if install_path.exists() {
+        let install_content = std::fs::read_to_string(&install_path).expect("Failed to read install.sh");
+        assert!(!install_content.contains("borno-linux-target"), "Portability regression: install.sh uses hardcoded target directory!");
+    }
+}
+

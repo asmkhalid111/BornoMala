@@ -24,9 +24,7 @@ impl CandidateGenerator {
         // Rule ALT-1: Word-Final High Vowel Orthographic Alternation
         // --------------------------------------------------------------------
         // Condition: Word ends with 'i' or 'u'
-        if raw_buffer == "tumi" {
-            Self::push_if_unique(&mut candidates, "তূমি".to_string());
-        } else if raw_buffer.ends_with('i') {
+        if raw_buffer.ends_with('i') {
             // Replace trailing 'ি' (U+09BF) with 'ী' (U+09C0)
             if normalized_primary.ends_with('\u{09BF}') {
                 let mut alt = normalized_primary[..normalized_primary.len() - '\u{09BF}'.len_utf8()].to_string();
@@ -69,15 +67,6 @@ impl CandidateGenerator {
             }
         }
 
-        // --------------------------------------------------------------------
-        // Backward Compatibility Fixtures for Engine Contract Tests
-        // --------------------------------------------------------------------
-        if raw_buffer == "k" {
-            Self::push_if_unique(&mut candidates, "খ".to_string());
-        } else if raw_buffer == "ka" {
-            Self::push_if_unique(&mut candidates, "ক্যা".to_string());
-            Self::push_if_unique(&mut candidates, "খা".to_string());
-        }
 
         // Strict Single Candidate Cap: Maximum 5 candidates total
         if candidates.len() > 5 {

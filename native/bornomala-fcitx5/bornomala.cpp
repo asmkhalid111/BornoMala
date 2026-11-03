@@ -181,9 +181,7 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
     }
 
     auto sym = keyEvent.key().sym();
-    FCITX_INFO() << "[Borno] keyEvent: sym=0x" << std::hex << sym << std::dec 
-                 << ", mode=" << prop->mode() 
-                 << ", isComposing=" << prop->isComposing();
+    // Raw keysym logging omitted to preserve user privacy (zero keystroke retention)
 
     // Step 4: Mode switch via unmodified F12 (or F4 for laptop keyboards with Airplane Mode on F12)
     if (sym == FcitxKey_F12 || sym == FcitxKey_F4) {
@@ -404,8 +402,7 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
 void BornoEngine::syncContextAndUI(fcitx::InputContext* ic, BornoContextProperty* prop, const BornoProcessResultC& res) {
     FCITX_INFO() << "[Borno] syncContextAndUI: handled=" << res.handled
                  << ", isComposing=" << res.state.is_composing
-                 << ", preedit='" << (res.state.preedit ? res.state.preedit : "") << "'"
-                 << ", committed='" << (res.committed_text ? res.committed_text : "") << "'";
+                 << ", candidates=" << res.state.candidates_count;
     if (res.committed_text && std::strlen(res.committed_text) > 0) {
         ic->commitString(res.committed_text);
     }

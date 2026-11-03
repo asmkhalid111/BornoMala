@@ -11,14 +11,84 @@ find_package(Fcitx5Utils REQUIRED)
 
 include(GNUInstallDirs)
 
-# Locate libbornomala_core.a
-set(BORNOMALA_CORE_STATIC "/home/asmkhalid/borno-linux-target/release/libbornomala_core.a")
-if(NOT EXISTS ${BORNOMALA_CORE_STATIC})
-    set(BORNOMALA_CORE_STATIC "${CMAKE_CURRENT_SOURCE_DIR}/../../crates/bornomala-core/target/release/libbornomala_core.a")
-endif()
+# ==============================================================================
+# Locate libbornomala_core.a Static Library
+# ==============================================================================
+# Resolution Precedence:
+# 1. Explicit user override: -DBORNOMALA_CORE_STATIC=/path/to/libbornomala_core.a
+#    - Must exist on disk; if missing, fails immediately without silent fallback.
+# 2. Configured CARGO_TARGET_DIR environment variable (if set and non-empty):
+#    - Checked before default workspace target to prevent stale artifacts from shadowing.
+#    - Handles both absolute paths and workspace-relative paths.
+# 3. Standard Cargo workspace target: <workspace_root>/target/release/libbornomala_core.a
+# 4. Member sub-crate target: <workspace_root>/crates/bornomala-core/target/release/libbornomala_core.a
+# ==============================================================================
 
-if(NOT EXISTS ${BORNOMALA_CORE_STATIC})
-    message(FATAL_ERROR "Could not find libbornomala_core.a. Please build bornomala-core in release profile first.")
+if(DEFINED BORNOMALA_CORE_STATIC AND NOT "${BORNOMALA_CORE_STATIC}" STREQUAL "")
+    # Precedence 1: Explicit user-supplied path
+    if(NOT EXISTS "${BORNOMALA_CORE_STATIC}")
+        message(FATAL_ERROR 
+            "Explicit BORNOMALA_CORE_STATIC path does not exist:\n"
+            "  ${BORNOMALA_CORE_STATIC}\n"
+            "Please ensure the library is built before specifying this path."
+        )
+    endif()
+    message(STATUS "Using explicitly provided libbornomala_core.a: ${BORNOMALA_CORE_STATIC}")
+else()
+    # Automatic Discovery
+    set(WORKSPACE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
+    get_filename_component(WORKSPACE_ROOT "${WORKSPACE_ROOT}" ABSOLUTE)
+
+    set(CHECKED_LOCATIONS "")
+
+    # Precedence 2: CARGO_TARGET_DIR environment variable (if set)
+    if(DEFINED ENV{CARGO_TARGET_DIR} AND NOT "$ENV{CARGO_TARGET_DIR}" STREQUAL "")
+        if(IS_ABSOLUTE "$ENV{CARGO_TARGET_DIR}")
+            set(RESOLVED_TARGET_DIR "$ENV{CARGO_TARGET_DIR}")
+        else()
+            get_filename_component(RESOLVED_TARGET_DIR "${WORKSPACE_ROOT}/$ENV{CARGO_TARGET_DIR}" ABSOLUTE)
+        endif()
+        set(ENV_TARGET "${RESOLVED_TARGET_DIR}/release/libbornomala_core.a")
+        list(APPEND CHECKED_LOCATIONS "CARGO_TARGET_DIR: ${ENV_TARGET}")
+        if(EXISTS "${ENV_TARGET}")
+            set(BORNOMALA_CORE_STATIC "${ENV_TARGET}")
+        endif()
+    endif()
+
+    # Precedence 3: Standard Cargo workspace target (repository root target/)
+    if(NOT BORNOMALA_CORE_STATIC)
+        set(WORKSPACE_TARGET "${WORKSPACE_ROOT}/target/release/libbornomala_core.a")
+        list(APPEND CHECKED_LOCATIONS "Workspace Root:   ${WORKSPACE_TARGET}")
+        if(EXISTS "${WORKSPACE_TARGET}")
+            set(BORNOMALA_CORE_STATIC "${WORKSPACE_TARGET}")
+        endif()
+    endif()
+
+    # Precedence 4: Sub-crate member target (crates/bornomala-core/target/)
+    if(NOT BORNOMALA_CORE_STATIC)
+        set(CRATE_TARGET "${WORKSPACE_ROOT}/crates/bornomala-core/target/release/libbornomala_core.a")
+        list(APPEND CHECKED_LOCATIONS "Member Sub-crate: ${CRATE_TARGET}")
+        if(EXISTS "${CRATE_TARGET}")
+            set(BORNOMALA_CORE_STATIC "${CRATE_TARGET}")
+        endif()
+    endif()
+
+    # If still not found, emit detailed error with build instructions
+    if(NOT BORNOMALA_CORE_STATIC)
+        string(REPLACE ";" "\n  - " CHECKED_LIST "${CHECKED_LOCATIONS}")
+        message(FATAL_ERROR 
+            "Could not locate libbornomala_core.a static library.\n"
+            "Checked locations:\n"
+            "  - ${CHECKED_LIST}\n"
+            "Please build bornomala-core using:\n"
+            "  cargo build --release -p bornomala-core\n"
+            "  (or: RUSTFLAGS=\"-C relocation-model=pic\" cargo build --release -p bornomala-core)\n"
+            "Or specify the library path directly via:\n"
+            "  cmake -DBORNOMALA_CORE_STATIC=/path/to/libbornomala_core.a"
+        )
+    endif()
+
+    message(STATUS "Discovered libbornomala_core.a: ${BORNOMALA_CORE_STATIC}")
 endif()
 
 include_directories(

@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 FCITX_SRC_DIR="$PROJECT_ROOT/native/bornomala-fcitx5"
 BUILD_DIR="${HOME}/bornomala-fcitx5-build"
-TARGET_DIR="${HOME}/borno-linux-target"
+TARGET_DIR="${PROJECT_ROOT}/target"
 
 echo "=== BornoMala Fcitx 5 User-Mode Installer ==="
 
@@ -17,7 +17,7 @@ mkdir -p "$TARGET_DIR"
 # 2. Build Fcitx 5 addon using CMake
 echo "[2/5] Building Fcitx 5 addon..."
 mkdir -p "$BUILD_DIR"
-(cd "$BUILD_DIR" && cmake -DCMAKE_BUILD_TYPE=Release "$FCITX_SRC_DIR" && make -j"$(nproc)")
+(cd "$BUILD_DIR" && cmake -DCMAKE_BUILD_TYPE=Release -DBORNOMALA_CORE_STATIC="${TARGET_DIR}/release/libbornomala_core.a" "$FCITX_SRC_DIR" && make -j"$(nproc)")
 
 # 3. Create destination user directories
 echo "[3/5] Setting up user directories in ~/.local/..."

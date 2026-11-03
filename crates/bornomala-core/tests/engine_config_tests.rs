@@ -12,23 +12,23 @@ fn test_engine_candidate_display_limit_presentation_slicing() {
     let mut engine = BornoEngine::new();
     engine.set_enable_dictionary_assistance(false);
 
-    // Input "ka" generates 3 candidates in Borno: ["কা", "ক্যা", "খা"]
+    // Input "shanti" generates 3 genuine rule-derived candidates: ["শান্তি", "শান্তী", "সান্তি"]
     engine.set_candidate_display_limit(2);
-    let res = engine.process_event(EngineEvent::InputString("ka".to_string()));
+    let res = engine.process_event(EngineEvent::InputString("shanti".to_string()));
 
     assert_eq!(res.state.candidates.len(), 2);
-    assert_eq!(res.state.candidates, vec!["কা", "ক্যা"]);
+    assert_eq!(res.state.candidates, vec!["শান্তি", "শান্তী"]);
 
     // Updating limit dynamically re-slices or expands on next composition event
     engine.set_candidate_display_limit(5);
-    let res2 = engine.process_event(EngineEvent::InputChar('a')); // "kaa" -> "কাআ"
+    let res2 = engine.process_event(EngineEvent::InputChar('i')); // "shantii" -> "শান্তী"
     assert!(res2.state.candidates.len() <= 5);
 
-    // Re-test with clean "ka" under limit 5
+    // Re-test with clean "shanti" under limit 5
     engine.reset();
-    let res3 = engine.process_event(EngineEvent::InputString("ka".to_string()));
+    let res3 = engine.process_event(EngineEvent::InputString("shanti".to_string()));
     assert_eq!(res3.state.candidates.len(), 3);
-    assert_eq!(res3.state.candidates, vec!["কা", "ক্যা", "খা"]);
+    assert_eq!(res3.state.candidates, vec!["শান্তি", "শান্তী", "সান্তি"]);
 }
 
 #[test]

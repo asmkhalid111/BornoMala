@@ -4,7 +4,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%20TSF%20%7C%20Linux%20Fcitx%205-0078d7.svg)](https://github.com/asmkhalid111/BornoMala)
 [![Tauri](https://img.shields.io/badge/Tauri-v2-24c8db.svg)](https://tauri.app/)
 [![License](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](#license)
-[![Tests](https://img.shields.io/badge/Tests-238%20Core%20%7C%20All%20Passing-brightgreen.svg)](#getting-started)
+[![Tests](https://img.shields.io/badge/Tests-252%20Core%20%7C%20All%20Passing-brightgreen.svg)](#getting-started)
 [![UX Baseline](https://img.shields.io/badge/UX%20Baseline-UX%200.1.0-blueviolet.svg)](docs/design-system-and-usability.md)
 [![Config Schema](https://img.shields.io/badge/Config%20Schema-v1.2.0-informational.svg)](crates/bornomala-core/src/config.rs)
 
@@ -109,9 +109,9 @@ The project follows a **three-tier decoupled versioning architecture**:
 ├── Borno-Sandbox.exe           # Pre-compiled standalone portable Windows desktop app
 ├── crates/
 │   └── bornomala-core/         # Pure Rust core input engine, layouts, dictionary, and C-ABI
-│       ├── include/            # C headers (bornomala.h, borno.h)
+│       ├── include/            # C headers (bornomala.h canonical master, borno.h forwarding)
 │       ├── src/                # Engine, normalizer, translit, layout, and dictionary code
-│       └── tests/              # 238 comprehensive unit, contract, layout, and golden tests
+│       └── tests/              # 252 comprehensive unit, contract, layout, golden, provenance, and C-ABI tests (11 targets)
 ├── native/
 │   ├── borno-tsf/              # Windows Text Services Framework (TSF) in-process C++ COM IME
 │   │   ├── borno_tsf.cpp       # ITfTextInputProcessorEx, ITfKeyEventSink, COM server
@@ -131,7 +131,9 @@ The project follows a **three-tier decoupled versioning architecture**:
 │   ├── engine-contract.md      # State machine and event dispatch contract
 │   ├── unicode-composition.md  # Unicode normalization & grapheme cluster rules
 │   └── windows-tsf-architecture.md # Native Windows TSF COM architecture
-├── milestones/                 # Verified milestone specifications and completion reports (M0–M9)
+├── milestones/                 # Verified milestone specifications (M0–M9) & remediation reports (WP-01–WP-04)
+│   ├── remediation/            # Remediation specifications, WSL2 reports, and completion reports
+│   └── revisions/              # Architectural revisions, hardening roadmaps, and governance reviews
 ├── ROADMAP.md                  # Master roadmap and milestone pathway through v1.0.0
 ├── AGENTS.md                   # Persistent operating rules for AI coding agents
 └── LICENSE-MIT / LICENSE-APACHE # Dual open-source licenses
@@ -141,7 +143,7 @@ The project follows a **three-tier decoupled versioning architecture**:
 
 ## Getting Started
 
-### 1. Run Automated Rust Core Tests (238 Tests)
+### 1. Run Automated Rust Core Tests (252 Tests)
 
 ```powershell
 cargo test -p bornomala-core
@@ -200,6 +202,12 @@ npm run tauri dev
 - [x] **M7 — First Native Windows IME (TSF):** Full Windows Text Services Framework in-process COM IME with floating candidate UI.
 - [x] **M8 — Linux Integration (Fcitx 5):** Native C++ input method engine addon for Linux desktops with candidate popups, preedit underline, and fontconfig setup.
 - [x] **M9 — Customization & Usability:** Schema-versioned config (`v1.2.0`), candidate orientation/typography preferences, themes (Dark Glass, Light Glass, High Contrast OLED), Dari punctuation toggle (`..` $\to$ `।`), and authoritative `UX 0.1.0` living design specification ([`docs/design-system-and-usability.md`](./docs/design-system-and-usability.md)).
+- [x] **Remediation & Core Hardening (WP-01 to WP-04):** Comprehensive defect remediation across all platform integrations and core interfaces:
+  - **WP-01:** Linux Fcitx 5 Privacy & Build Integrity (zero keystroke retention; 4-tier portable CMake discovery).
+  - **WP-02:** Candidate Integrity & Contract Test Alignment (eliminated artificial fixtures in candidate generator; aligned all contract tests).
+  - **WP-03:** Unicode-Safe In-Composition Cursor Arithmetic (eliminated scalar vs byte dimension mismatch with `floor_char_boundary`).
+  - **WP-04:** C-ABI Header Unification (`bornomala.h` canonical master, `borno.h` forwarding wrapper, dynamic C/Rust struct layout parity suite, Windows TSF regression verification).
+  - Tracked in [`milestones/remediation/INDEX.md`](./milestones/remediation/INDEX.md).
 - [ ] **M10 — Contextual Prediction (Optional, Evidence-Gated):** Reproducible Python evaluation pipeline, offline next-word prediction quality/latency benchmarks, and candidate integration assessment.
 
 > **Note on UX Evolution:** Ongoing visual and ergonomic refinements (e.g. multi-accent color selectors, light theme contrast enhancements, and 1-press down-arrow candidate selection) are systematically cataloged in [`docs/usability-and-linguistic-backlog.md`](./docs/usability-and-linguistic-backlog.md) and governed by [`docs/design-system-and-usability.md`](./docs/design-system-and-usability.md).

@@ -1297,11 +1297,21 @@ impl BornoEngine {
                 if span.target_range.start == span.target_range.end {
                     return span.source_range.start;
                 }
+                if target_pos == span.target_range.start {
+                    return span.source_range.start;
+                }
+                if target_pos == span.target_range.end {
+                    return span.source_range.end;
+                }
                 let ratio = (target_pos - span.target_range.start) as f32
                     / (span.target_range.end - span.target_range.start) as f32;
                 let source_len = span.source_range.end - span.source_range.start;
                 let offset = (ratio * source_len as f32).round() as usize;
-                return span.source_range.start + offset;
+                let candidate = span.source_range.start + offset;
+                let aligned = floor_char_boundary(&self.state.raw_buffer, candidate);
+                return aligned
+                    .max(span.source_range.start)
+                    .min(span.source_range.end);
             }
         }
         self.state.raw_buffer.len()
@@ -1309,11 +1319,12 @@ impl BornoEngine {
 
     /// Inserts a character into the raw buffer at or after cursor, then updates composition.
     fn insert_char_at_cursor(&mut self, c: char) {
-        let mut chars: Vec<char> = self.state.raw_buffer.chars().collect();
-        let idx = self.source_cursor.min(chars.len());
-        chars.insert(idx, c);
-        self.state.raw_buffer = chars.into_iter().collect();
-        self.source_cursor = idx + c.len_utf8();
+        debug_assert!(self.source_cursor <= self.state.raw_buffer.len());
+        debug_assert!(self.state.raw_buffer.is_char_boundary(self.source_cursor));
+
+        self.state.raw_buffer.insert(self.source_cursor, c);
+        self.source_cursor += c.len_utf8();
+
         self.update_composition();
         self.state.cursor_pos = phonetic::PhoneticEngine::map_cursor_to_target(
             self.source_cursor,
@@ -1325,39 +1336,47 @@ impl BornoEngine {
 
     /// Deletes a character in raw_buffer preceding the cursor position.
     fn delete_before_cursor(&mut self) {
+        debug_assert!(self.source_cursor <= self.state.raw_buffer.len());
+        debug_assert!(self.state.raw_buffer.is_char_boundary(self.source_cursor));
+
         if self.source_cursor > 0 && !self.state.raw_buffer.is_empty() {
-            let mut chars: Vec<char> = self.state.raw_buffer.chars().collect();
-            let remove_idx = self.source_cursor.saturating_sub(1);
-            if remove_idx < chars.len() {
-                chars.remove(remove_idx);
+            if let Some(prev_char) = self.state.raw_buffer[..self.source_cursor]
+                .chars()
+                .next_back()
+            {
+                let prev_start = self.source_cursor - prev_char.len_utf8();
+                self.state.raw_buffer.drain(prev_start..self.source_cursor);
+                self.source_cursor = prev_start;
+
+                self.update_composition();
+                self.state.cursor_pos = phonetic::PhoneticEngine::map_cursor_to_target(
+                    self.source_cursor,
+                    &self.state.raw_buffer,
+                    &self.spans,
+                    &self.state.preedit,
+                );
             }
-            self.state.raw_buffer = chars.into_iter().collect();
-            self.source_cursor = self.source_cursor.saturating_sub(1);
-            self.update_composition();
-            self.state.cursor_pos = phonetic::PhoneticEngine::map_cursor_to_target(
-                self.source_cursor,
-                &self.state.raw_buffer,
-                &self.spans,
-                &self.state.preedit,
-            );
         }
     }
 
     /// Deletes a character in raw_buffer following the cursor position.
     fn delete_after_cursor(&mut self) {
+        debug_assert!(self.source_cursor <= self.state.raw_buffer.len());
+        debug_assert!(self.state.raw_buffer.is_char_boundary(self.source_cursor));
+
         if self.source_cursor < self.state.raw_buffer.len() {
-            let mut chars: Vec<char> = self.state.raw_buffer.chars().collect();
-            if self.source_cursor < chars.len() {
-                chars.remove(self.source_cursor);
+            if let Some(next_char) = self.state.raw_buffer[self.source_cursor..].chars().next() {
+                let next_end = self.source_cursor + next_char.len_utf8();
+                self.state.raw_buffer.drain(self.source_cursor..next_end);
+
+                self.update_composition();
+                self.state.cursor_pos = phonetic::PhoneticEngine::map_cursor_to_target(
+                    self.source_cursor,
+                    &self.state.raw_buffer,
+                    &self.spans,
+                    &self.state.preedit,
+                );
             }
-            self.state.raw_buffer = chars.into_iter().collect();
-            self.update_composition();
-            self.state.cursor_pos = phonetic::PhoneticEngine::map_cursor_to_target(
-                self.source_cursor,
-                &self.state.raw_buffer,
-                &self.spans,
-                &self.state.preedit,
-            );
         }
     }
 
@@ -1449,6 +1468,18 @@ pub fn physical_key_to_ascii(key: layout::PhysicalKey, shift: bool) -> Option<ch
         (Space, _) => ' ',
     };
     Some(ch)
+}
+
+/// Returns the greatest character boundary less than or equal to `idx`.
+#[inline]
+fn floor_char_boundary(s: &str, mut idx: usize) -> usize {
+    if idx >= s.len() {
+        return s.len();
+    }
+    while idx > 0 && !s.is_char_boundary(idx) {
+        idx -= 1;
+    }
+    idx
 }
 
 impl Default for BornoEngine {
@@ -1561,5 +1592,280 @@ mod tests {
         assert_eq!(res.committed_text, None);
         assert!(!res.cancelled);
         assert!(res.handled);
+    }
+
+    #[test]
+    fn test_internal_cursor_multibyte_insertion() {
+        let mut engine = BornoEngine::new();
+        engine.insert_char_at_cursor('ক');
+        engine.insert_char_at_cursor('b');
+
+        // Strict byte-offset and UTF-8 boundary invariants
+        assert_eq!(engine.state.raw_buffer, "কb");
+        assert_eq!(engine.state.raw_buffer.len(), 4);
+        assert_eq!(engine.source_cursor, 4);
+        assert!(engine
+            .state
+            .raw_buffer
+            .is_char_boundary(engine.source_cursor));
+
+        // Composed target-state expectations
+        assert_eq!(engine.state.preedit, "কব");
+        assert_eq!(engine.state.cursor_pos, 2);
+        assert!(engine.state.is_composing);
+    }
+
+    #[test]
+    fn test_internal_cursor_multibyte_interior_backspace() {
+        let mut engine = BornoEngine::new();
+        engine.state.is_composing = true;
+        engine.state.raw_buffer = "কb".to_string();
+        let (preedit, spans, _) = phonetic::PhoneticEngine::transliterate(&engine.state.raw_buffer);
+        engine.state.preedit = preedit;
+        engine.spans = spans;
+        engine.source_cursor = 3;
+        assert!(engine
+            .state
+            .raw_buffer
+            .is_char_boundary(engine.source_cursor));
+        engine.state.cursor_pos = phonetic::PhoneticEngine::map_cursor_to_target(
+            engine.source_cursor,
+            &engine.state.raw_buffer,
+            &engine.spans,
+            &engine.state.preedit,
+        );
+
+        engine.delete_before_cursor();
+
+        // Strict byte-offset and UTF-8 boundary invariants
+        assert_eq!(engine.state.raw_buffer, "b");
+        assert_eq!(engine.source_cursor, 0);
+        assert!(engine.source_cursor <= engine.state.raw_buffer.len());
+        assert!(engine
+            .state
+            .raw_buffer
+            .is_char_boundary(engine.source_cursor));
+
+        // Composition re-evaluation
+        assert_eq!(engine.state.preedit, "ব");
+        assert_eq!(engine.state.cursor_pos, 0);
+        assert!(engine.state.is_composing);
+    }
+
+    #[test]
+    fn test_internal_cursor_multibyte_forward_delete() {
+        let mut engine = BornoEngine::new();
+        engine.state.is_composing = true;
+        engine.state.raw_buffer = "কb".to_string();
+        let (preedit, spans, _) = phonetic::PhoneticEngine::transliterate(&engine.state.raw_buffer);
+        engine.state.preedit = preedit;
+        engine.spans = spans;
+        engine.source_cursor = 0;
+        assert!(engine
+            .state
+            .raw_buffer
+            .is_char_boundary(engine.source_cursor));
+        engine.state.cursor_pos = phonetic::PhoneticEngine::map_cursor_to_target(
+            engine.source_cursor,
+            &engine.state.raw_buffer,
+            &engine.spans,
+            &engine.state.preedit,
+        );
+
+        engine.delete_after_cursor();
+
+        // Strict byte-offset and UTF-8 boundary invariants
+        assert_eq!(engine.state.raw_buffer, "b");
+        assert_eq!(engine.source_cursor, 0);
+        assert!(engine.source_cursor <= engine.state.raw_buffer.len());
+        assert!(engine
+            .state
+            .raw_buffer
+            .is_char_boundary(engine.source_cursor));
+
+        // Composition re-evaluation
+        assert_eq!(engine.state.preedit, "ব");
+        assert_eq!(engine.state.cursor_pos, 0);
+        assert!(engine.state.is_composing);
+    }
+
+    #[test]
+    fn test_internal_cursor_pure_mapping_digraph() {
+        let (tokenized_preedit, tokenized_spans) = phonetic::Tokenizer::tokenize("kh");
+        assert_eq!(tokenized_preedit, "খ");
+        assert_eq!(tokenized_spans.len(), 1);
+        assert_eq!(tokenized_spans[0].source_range, 0..2);
+        assert_eq!(tokenized_spans[0].target_range, 0..1);
+
+        let mut engine = BornoEngine::new();
+        engine.state.raw_buffer = "kh".to_string();
+        engine.state.preedit = tokenized_preedit;
+        engine.spans = tokenized_spans;
+
+        // Forward mapping
+        let t0 = phonetic::PhoneticEngine::map_cursor_to_target(
+            0,
+            &engine.state.raw_buffer,
+            &engine.spans,
+            &engine.state.preedit,
+        );
+        assert_eq!(t0, 0);
+
+        let t1 = phonetic::PhoneticEngine::map_cursor_to_target(
+            1,
+            &engine.state.raw_buffer,
+            &engine.spans,
+            &engine.state.preedit,
+        );
+        assert_eq!(t1, 0); // Left affinity interior collapse
+
+        let t2 = phonetic::PhoneticEngine::map_cursor_to_target(
+            2,
+            &engine.state.raw_buffer,
+            &engine.spans,
+            &engine.state.preedit,
+        );
+        assert_eq!(t2, 1); // Token boundary end
+
+        // Inverse mapping
+        let s0 = engine.map_target_to_source(0);
+        assert!(s0 <= engine.state.raw_buffer.len());
+        assert!(engine.state.raw_buffer.is_char_boundary(s0));
+        assert_eq!(s0, 0);
+
+        let s1 = engine.map_target_to_source(1);
+        assert!(s1 <= engine.state.raw_buffer.len());
+        assert!(engine.state.raw_buffer.is_char_boundary(s1));
+        assert_eq!(s1, 2);
+    }
+
+    #[test]
+    fn test_internal_cursor_proportional_interpolation_synthetic() {
+        // Multibyte Character Case (Synthetic Arithmetic Test)
+        let mut engine = BornoEngine::new();
+        engine.state.raw_buffer = "কa".to_string(); // 4 bytes: 'ক' at 0..3, 'a' at 3..4
+        engine.state.preedit = "XY".to_string(); // 2 codepoints
+        let test_span_mb = phonetic::TokenSpan {
+            source_range: 0..4,
+            target_range: 0..2,
+        };
+        engine.spans = vec![test_span_mb.clone()];
+
+        // Boundary match (t = 0)
+        let s0 = engine.map_target_to_source(0);
+        assert!(s0 <= engine.state.raw_buffer.len());
+        assert!(engine.state.raw_buffer.is_char_boundary(s0));
+        assert!((test_span_mb.source_range.start..=test_span_mb.source_range.end).contains(&s0));
+        assert_eq!(s0, 0);
+
+        // Boundary match (t = 2)
+        let s2 = engine.map_target_to_source(2);
+        assert!(s2 <= engine.state.raw_buffer.len());
+        assert!(engine.state.raw_buffer.is_char_boundary(s2));
+        assert!((test_span_mb.source_range.start..=test_span_mb.source_range.end).contains(&s2));
+        assert_eq!(s2, 4);
+
+        // Interpolated candidate in multibyte (t = 1):
+        // candidate offset 2 inside 'ক' snaps backward to 0 via floor_char_boundary
+        let s1 = engine.map_target_to_source(1);
+        assert!(s1 <= engine.state.raw_buffer.len());
+        assert!(engine.state.raw_buffer.is_char_boundary(s1));
+        assert!((test_span_mb.source_range.start..=test_span_mb.source_range.end).contains(&s1));
+        assert_eq!(s1, 0);
+
+        // ASCII Uniform Proportional Case (Synthetic Arithmetic Test)
+        let mut engine_ascii = BornoEngine::new();
+        engine_ascii.state.raw_buffer = "abcdef".to_string(); // 6 bytes
+        engine_ascii.state.preedit = "XYZ".to_string(); // 3 codepoints
+        let test_span_ascii = phonetic::TokenSpan {
+            source_range: 0..6,
+            target_range: 0..3,
+        };
+        engine_ascii.spans = vec![test_span_ascii.clone()];
+
+        // t = 0
+        let a0 = engine_ascii.map_target_to_source(0);
+        assert!(a0 <= engine_ascii.state.raw_buffer.len());
+        assert!(engine_ascii.state.raw_buffer.is_char_boundary(a0));
+        assert!(
+            (test_span_ascii.source_range.start..=test_span_ascii.source_range.end).contains(&a0)
+        );
+        assert_eq!(a0, 0);
+
+        // t = 1
+        let a1 = engine_ascii.map_target_to_source(1);
+        assert!(a1 <= engine_ascii.state.raw_buffer.len());
+        assert!(engine_ascii.state.raw_buffer.is_char_boundary(a1));
+        assert!(
+            (test_span_ascii.source_range.start..=test_span_ascii.source_range.end).contains(&a1)
+        );
+        assert_eq!(a1, 2);
+
+        // t = 2
+        let a2 = engine_ascii.map_target_to_source(2);
+        assert!(a2 <= engine_ascii.state.raw_buffer.len());
+        assert!(engine_ascii.state.raw_buffer.is_char_boundary(a2));
+        assert!(
+            (test_span_ascii.source_range.start..=test_span_ascii.source_range.end).contains(&a2)
+        );
+        assert_eq!(a2, 4);
+
+        // t = 3
+        let a3 = engine_ascii.map_target_to_source(3);
+        assert!(a3 <= engine_ascii.state.raw_buffer.len());
+        assert!(engine_ascii.state.raw_buffer.is_char_boundary(a3));
+        assert!(
+            (test_span_ascii.source_range.start..=test_span_ascii.source_range.end).contains(&a3)
+        );
+        assert_eq!(a3, 6);
+    }
+
+    #[test]
+    fn test_internal_cursor_empty_states_and_fast_paths() {
+        // 1. Empty source, empty preedit, empty spans
+        let mut engine = BornoEngine::new();
+        assert_eq!(engine.map_target_to_source(0), 0);
+        assert_eq!(engine.map_target_to_source(5), 0);
+
+        // 2. Non-empty source with empty preedit and empty spans
+        // Proves fast-path precedence: target_pos == 0 || spans.is_empty() evaluates to 0
+        // before target_pos >= max_target
+        engine.state.raw_buffer = "hello".to_string();
+        engine.state.preedit.clear();
+        engine.spans.clear();
+        assert_eq!(engine.map_target_to_source(0), 0);
+        assert_eq!(engine.map_target_to_source(1), 0);
+        assert_eq!(engine.map_target_to_source(10), 0);
+
+        // 3. Empty spans with non-empty preedit
+        // (Precondition violation in synthetic state, verified against actual fast-path precedence)
+        engine.state.preedit = "hello".to_string();
+        engine.spans.clear();
+        assert_eq!(engine.map_target_to_source(0), 0);
+        assert_eq!(engine.map_target_to_source(2), 0);
+
+        // 4. Target position zero with non-empty spans and non-empty preedit
+        let span = phonetic::TokenSpan {
+            source_range: 0..5,
+            target_range: 0..5,
+        };
+        engine.spans = vec![span.clone()];
+        assert_eq!(engine.map_target_to_source(0), 0);
+
+        // 5. Target position at or beyond max_target
+        assert_eq!(engine.map_target_to_source(5), 5);
+        assert_eq!(engine.map_target_to_source(100), 5);
+
+        // 6. Valid interior positions in contiguous spans
+        let span1 = phonetic::TokenSpan {
+            source_range: 0..2,
+            target_range: 0..1,
+        };
+        let span2 = phonetic::TokenSpan {
+            source_range: 2..5,
+            target_range: 1..2,
+        };
+        engine.spans = vec![span1, span2];
+        assert_eq!(engine.map_target_to_source(1), 2);
     }
 }

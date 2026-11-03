@@ -1,15 +1,50 @@
 /**
- * @file borno.h
- * @brief C-API declarations for Borno Core Bangla Input Platform.
+ * @file bornomala.h
+ * @brief C-API declarations for BornoMala Core Bangla Input Platform.
  *
- * All string pointers returned by these APIs are allocated by the Rust core
- * and MUST be freed by calling borno_string_free() or the respective struct
- * cleanup functions (borno_status_free_members, borno_state_free_members,
- * borno_process_result_free_members).
+ * Memory Ownership & Deallocation Rules:
+ * - Preferred Deallocation Method: Callers SHOULD always release output structures
+ *   using the corresponding structure cleanup helper (borno_status_free_members,
+ *   borno_state_free_members, borno_process_result_free_members). These helpers safely
+ *   free all nested allocations, null dangling pointers, and reset status flags.
+ * - Individual String Deallocation: Direct standalone strings (e.g. borno_ffi_echo_utf8)
+ *   or independently allocated structure string members (BornoStatusC::name, version,
+ *   active_mode; BornoStateC::preedit, raw_buffer; BornoProcessResultC::committed_text)
+ *   may be freed individually using borno_string_free().
+ * - Double-Free Prevention: If a structure string member is freed individually via
+ *   borno_string_free(), the caller MUST immediately assign that pointer field to NULL.
+ *   Callers must NEVER free a member individually and subsequently invoke the structure
+ *   cleanup helper while that member still contains its dangling pointer.
+ * - Candidate Array Lifecycle: Candidate inner strings and the outer pointer array
+ *   (BornoStateC::candidates, BornoProcessResultC::state.candidates) MUST be managed
+ *   exclusively using borno_state_free_members() or borno_process_result_free_members().
+ *   borno_string_free() must NEVER be used to deallocate the candidate outer array (char**),
+ *   as doing so corrupts the allocator heap.
+ * - Standard C free() or C++ delete must NEVER be used on any pointer returned by Rust.
+ *
+ * Output Structure Lifecycle & Reuse:
+ * - On success (BORNO_OK), output-writing functions completely overwrite all structure
+ *   members with fresh allocations. The implementation does NOT free previously held
+ *   pointers. Callers MUST call the appropriate cleanup helper before reusing an
+ *   already-populated structure to avoid leaking memory.
+ * - On early error returns (e.g., BORNO_ERR_NULL_PTR, BORNO_ERR_INVALID_ARGUMENT,
+ *   BORNO_ERR_INVALID_UTF8), output structures are left completely untouched.
+ * - On panic (BORNO_ERR_PANIC), output structures may be left untouched or partially
+ *   written; cleanup after a panic cannot be guaranteed safe by the implementation.
+ * - Zero-initialization before first call (e.g. memset or = {0}) is a strongly recommended
+ *   caller safety practice to ensure calling cleanup helpers on error paths is a safe
+ *   no-op, but it is not an engine runtime prerequisite on successful calls.
+ * - Cleanup helpers are safe for NULL pointers, safe for zero-initialized structures,
+ *   and proven idempotent across repeated calls under their documented preconditions.
  */
 
+#ifndef BORNOMALA_H
+#define BORNOMALA_H
+
+/* Backward-compatibility guard alias for legacy code expecting BORNO_H */
 #ifndef BORNO_H
 #define BORNO_H
+#endif
 
 #include <stddef.h>
 #include <stdint.h>
@@ -325,4 +360,4 @@ int32_t borno_ffi_echo_utf8(const char* input, char** out_str, size_t* out_len);
 }
 #endif
 
-#endif /* BORNO_H */
+#endif /* BORNOMALA_H */

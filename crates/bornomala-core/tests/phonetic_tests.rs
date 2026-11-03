@@ -375,7 +375,7 @@ fn test_candidate_alt1_ami() {
 #[test]
 fn test_candidate_alt1_tumi() {
     let (_, _, c) = PhoneticEngine::transliterate("tumi");
-    assert_eq!(c, vec!["তুমি", "তূমি"]);
+    assert_eq!(c, vec!["তুমি", "তুমী"]);
 }
 
 #[test]

@@ -8,8 +8,8 @@
 //! 5. Input Modes (Phonetic vs English Passthrough) and Mode Switching Auto-Commit
 //! 6. C-ABI Behavioral Parity & Memory Cleanup
 
-use bornomala_core::{BornoEngine, EngineEvent, InputMode};
 use bornomala_core::ffi::*;
+use bornomala_core::{BornoEngine, EngineEvent, InputMode};
 use std::ffi::CStr;
 use std::ptr;
 
@@ -145,42 +145,42 @@ fn test_candidate_navigation_wrapping_and_selection() {
     let mut engine = BornoEngine::new();
     engine.set_enable_dictionary_assistance(false);
 
-    // "ka" fixture generates: ["কা", "ক্যা", "খা"]
-    let res = engine.process_event(EngineEvent::InputString("ka".to_string()));
-    assert_eq!(res.state.candidates, vec!["কা", "ক্যা", "খা"]);
+    // "shanti" generates genuine rule-derived candidates: ["শান্তি", "শান্তী", "সান্তি"]
+    let res = engine.process_event(EngineEvent::InputString("shanti".to_string()));
+    assert_eq!(res.state.candidates, vec!["শান্তি", "শান্তী", "সান্তি"]);
     assert_eq!(res.state.selected_candidate_index, None);
 
-    // NextCandidate from None -> 0 ("কা")
+    // NextCandidate from None -> 0 ("শান্তি")
     let r1 = engine.process_event(EngineEvent::NextCandidate);
     assert_eq!(r1.state.selected_candidate_index, Some(0));
     assert!(r1.state.is_composing); // Still composing! Not committed!
     assert_eq!(r1.committed_text, None);
 
-    // NextCandidate -> 1 ("ক্যা")
+    // NextCandidate -> 1 ("শান্তী")
     let r2 = engine.process_event(EngineEvent::NextCandidate);
     assert_eq!(r2.state.selected_candidate_index, Some(1));
     assert_eq!(r2.committed_text, None);
 
-    // NextCandidate -> 2 ("খা")
+    // NextCandidate -> 2 ("সান্তি")
     let r3 = engine.process_event(EngineEvent::NextCandidate);
     assert_eq!(r3.state.selected_candidate_index, Some(2));
     assert_eq!(r3.committed_text, None);
 
-    // NextCandidate -> wrap around to 0 ("কা")
+    // NextCandidate -> wrap around to 0 ("শান্তি")
     let r4 = engine.process_event(EngineEvent::NextCandidate);
     assert_eq!(r4.state.selected_candidate_index, Some(0));
 
-    // PrevCandidate -> wrap back to 2 ("খা")
+    // PrevCandidate -> wrap back to 2 ("সান্তি")
     let r5 = engine.process_event(EngineEvent::PrevCandidate);
     assert_eq!(r5.state.selected_candidate_index, Some(2));
 
-    // PrevCandidate -> 1 ("ক্যা")
+    // PrevCandidate -> 1 ("শান্তী")
     let r6 = engine.process_event(EngineEvent::PrevCandidate);
     assert_eq!(r6.state.selected_candidate_index, Some(1));
 
-    // Commit while index 1 is highlighted -> commits "ক্যা"
+    // Commit while index 1 is highlighted -> commits "শান্তী"
     let r_commit = engine.process_event(EngineEvent::Commit);
-    assert_eq!(r_commit.committed_text, Some("ক্যা".to_string()));
+    assert_eq!(r_commit.committed_text, Some("শান্তী".to_string()));
     assert!(!r_commit.state.is_composing);
     assert_eq!(r_commit.state.preedit, "");
 }
@@ -190,20 +190,20 @@ fn test_candidate_direct_selection_and_invalid_index() {
     let mut engine = BornoEngine::new();
     engine.set_enable_dictionary_assistance(false);
 
-    engine.process_event(EngineEvent::InputString("ka".to_string()));
-    assert_eq!(engine.state().candidates, vec!["কা", "ক্যা", "খা"]);
+    engine.process_event(EngineEvent::InputString("shanti".to_string()));
+    assert_eq!(engine.state().candidates, vec!["শান্তি", "শান্তী", "সান্তি"]);
 
     // Out-of-bounds selection (index 99) -> rejected, state preserved
     let r_err = engine.process_event(EngineEvent::SelectCandidate(99));
     assert!(!r_err.handled);
     assert_eq!(r_err.committed_text, None);
-    assert_eq!(engine.state().preedit, "কা");
+    assert_eq!(engine.state().preedit, "শান্তি");
     assert!(engine.state().is_composing);
 
-    // Direct SelectCandidate(2) -> immediately commits "খা" and transitions to Idle
+    // Direct SelectCandidate(2) -> immediately commits "সান্তি" and transitions to Idle
     let r_select = engine.process_event(EngineEvent::SelectCandidate(2));
     assert!(r_select.handled);
-    assert_eq!(r_select.committed_text, Some("খা".to_string()));
+    assert_eq!(r_select.committed_text, Some("সান্তি".to_string()));
     assert!(!r_select.state.is_composing);
     assert_eq!(r_select.state.preedit, "");
 }
@@ -306,6 +306,154 @@ fn test_idle_backspace_and_delete_passthrough() {
     let r_del = engine.process_event(EngineEvent::Delete);
     assert!(!r_del.handled);
     assert_eq!(r_del.committed_text, None);
+}
+
+#[test]
+fn test_contract_cursor_ascii_baseline_interior_backspace() {
+    let mut engine = BornoEngine::new();
+    let res0 = engine.process_event(EngineEvent::InputString("ami".to_string()));
+    assert!(res0.handled);
+    assert_eq!(res0.state.raw_buffer, "ami");
+    assert_eq!(res0.state.preedit, "আমি");
+    assert_eq!(res0.state.cursor_pos, 3);
+
+    let res1 = engine.process_event(EngineEvent::MoveCursorLeft);
+    assert!(res1.handled);
+    assert_eq!(res1.state.cursor_pos, 2);
+
+    let res2 = engine.process_event(EngineEvent::Backspace);
+    assert!(res2.handled);
+    assert_eq!(res2.state.raw_buffer, "ai");
+    assert_eq!(res2.state.preedit, "আই");
+    assert_eq!(res2.state.cursor_pos, 1);
+    assert!(res2.state.is_composing);
+}
+
+#[test]
+fn test_contract_cursor_boundary_deletion_handled_semantics() {
+    let mut engine = BornoEngine::new();
+
+    // Initial input: "k" -> "ক"
+    let res0 = engine.process_event(EngineEvent::InputString("k".to_string()));
+    assert!(res0.handled);
+    assert_eq!(res0.state.raw_buffer, "k");
+    assert_eq!(res0.state.preedit, "ক");
+    assert_eq!(res0.state.cursor_pos, 1);
+    assert!(res0.state.is_composing);
+
+    // 1. Move left to start
+    let res1 = engine.process_event(EngineEvent::MoveCursorLeft);
+    assert!(res1.handled);
+    assert_eq!(res1.state.raw_buffer, "k");
+    assert_eq!(res1.state.preedit, "ক");
+    assert_eq!(res1.state.cursor_pos, 0);
+    assert!(res1.state.is_composing);
+
+    // 2. Backspace at start (unhandled, preserves state)
+    let res2 = engine.process_event(EngineEvent::Backspace);
+    assert!(!res2.handled);
+    assert_eq!(res2.state.raw_buffer, "k");
+    assert_eq!(res2.state.preedit, "ক");
+    assert_eq!(res2.state.cursor_pos, 0);
+    assert!(res2.state.is_composing);
+
+    // 3. Move right to end
+    let res3 = engine.process_event(EngineEvent::MoveCursorRight);
+    assert!(res3.handled);
+    assert_eq!(res3.state.raw_buffer, "k");
+    assert_eq!(res3.state.preedit, "ক");
+    assert_eq!(res3.state.cursor_pos, 1);
+    assert!(res3.state.is_composing);
+
+    // 4. Forward delete at end (unhandled, preserves state)
+    let res4 = engine.process_event(EngineEvent::Delete);
+    assert!(!res4.handled);
+    assert_eq!(res4.state.raw_buffer, "k");
+    assert_eq!(res4.state.preedit, "ক");
+    assert_eq!(res4.state.cursor_pos, 1);
+    assert!(res4.state.is_composing);
+
+    // 5. Backspace at end (handled, clears composition)
+    let res5 = engine.process_event(EngineEvent::Backspace);
+    assert!(res5.handled);
+    assert_eq!(res5.state.raw_buffer, "");
+    assert_eq!(res5.state.preedit, "");
+    assert_eq!(res5.state.cursor_pos, 0);
+    assert!(!res5.state.is_composing);
+
+    // 6a. Re-input "k"
+    let res6a = engine.process_event(EngineEvent::InputString("k".to_string()));
+    assert!(res6a.handled);
+    assert_eq!(res6a.state.raw_buffer, "k");
+    assert_eq!(res6a.state.preedit, "ক");
+    assert_eq!(res6a.state.cursor_pos, 1);
+    assert!(res6a.state.is_composing);
+
+    // 6b. Move left to start
+    let res6b = engine.process_event(EngineEvent::MoveCursorLeft);
+    assert!(res6b.handled);
+    assert_eq!(res6b.state.raw_buffer, "k");
+    assert_eq!(res6b.state.preedit, "ক");
+    assert_eq!(res6b.state.cursor_pos, 0);
+    assert!(res6b.state.is_composing);
+
+    // 6c. Forward delete at start (handled, clears composition)
+    let res6c = engine.process_event(EngineEvent::Delete);
+    assert!(res6c.handled);
+    assert_eq!(res6c.state.raw_buffer, "");
+    assert_eq!(res6c.state.preedit, "");
+    assert_eq!(res6c.state.cursor_pos, 0);
+    assert!(!res6c.state.is_composing);
+}
+
+#[test]
+fn test_contract_cursor_in_preedit_navigation_and_interior_insertion() {
+    let mut engine = BornoEngine::new();
+
+    // 1. Type "bha" -> "ভা", cursor_pos = 2
+    let res0 = engine.process_event(EngineEvent::InputString("bha".to_string()));
+    assert!(res0.handled);
+    assert_eq!(res0.state.raw_buffer, "bha");
+    assert_eq!(res0.state.preedit, "ভা");
+    assert_eq!(res0.state.cursor_pos, 2);
+
+    // 2. Move left -> cursor_pos = 1
+    let res1 = engine.process_event(EngineEvent::MoveCursorLeft);
+    assert!(res1.handled);
+    assert_eq!(res1.state.cursor_pos, 1);
+
+    // 3. Insert 'k' -> raw_buffer = "bhka", preedit = "ভকা", cursor_pos = 2
+    let res2 = engine.process_event(EngineEvent::InputChar('k'));
+    assert!(res2.handled);
+    assert_eq!(res2.state.raw_buffer, "bhka");
+    assert_eq!(res2.state.preedit, "ভকা");
+    assert_eq!(res2.state.cursor_pos, 2);
+    assert!(res2.state.is_composing);
+}
+
+#[test]
+fn test_contract_cursor_public_ingress_clamping() {
+    let mut engine = BornoEngine::new();
+
+    // 1. Type "ami" -> "আমি", cursor_pos = 3
+    let res0 = engine.process_event(EngineEvent::InputString("ami".to_string()));
+    assert!(res0.handled);
+    assert_eq!(res0.state.raw_buffer, "ami");
+    assert_eq!(res0.state.preedit, "আমি");
+    assert_eq!(res0.state.cursor_pos, 3);
+
+    // 2. Public ingress SetCursor(1000) clamps to max codepoint count (3)
+    let res1 = engine.process_event(EngineEvent::SetCursor(1000));
+    assert!(res1.handled);
+    assert_eq!(res1.state.cursor_pos, 3);
+
+    // 3. Backspace deletes 'i' -> raw_buffer = "am", preedit = "আম", cursor_pos = 2
+    let res2 = engine.process_event(EngineEvent::Backspace);
+    assert!(res2.handled);
+    assert_eq!(res2.state.raw_buffer, "am");
+    assert_eq!(res2.state.preedit, "আম");
+    assert_eq!(res2.state.cursor_pos, 2);
+    assert!(res2.state.is_composing);
 }
 
 // ============================================================================
@@ -426,7 +574,7 @@ fn test_c_abi_process_event_parity_and_cleanup() {
         assert!(result.committed_text.is_null());
         borno_process_result_free_members(&mut result);
 
-        // 4. SelectCandidate(1) -> commits index 1 ("ক্যা")
+        // 4. SelectCandidate(1) -> commits index 1 ("কাজ" from lexicon)
         let ev_sel = BornoEventC {
             event_type: BORNO_EVENT_SELECT_CANDIDATE,
             char_codepoint: 0,
@@ -439,7 +587,7 @@ fn test_c_abi_process_event_parity_and_cleanup() {
         assert!(result.handled);
         assert!(!result.committed_text.is_null());
         let committed = CStr::from_ptr(result.committed_text).to_str().unwrap();
-        assert_eq!(committed, "ক্যা");
+        assert_eq!(committed, "কাজ");
         assert!(!result.state.is_composing);
         borno_process_result_free_members(&mut result);
 

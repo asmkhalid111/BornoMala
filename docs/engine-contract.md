@@ -219,39 +219,53 @@ In M1, editing is defined at the **Unicode codepoint** boundary. Full linguistic
 
 ---
 
-## 7. C-ABI Interface (`borno.h` / `ffi.rs`)
+## 7. C-ABI Interface (`bornomala.h` / `borno.h` Forwarding / `ffi.rs`)
 
-To ensure robust interoperability with native Windows TSF, Linux Fcitx, or macOS IMK adapters, the C-ABI is strictly protected against Rust-specific types:
+To ensure robust interoperability with native Windows TSF, Linux Fcitx, or macOS IMK adapters, the C-ABI is exposed through a canonical header and legacy forwarding wrapper:
+- **`crates/bornomala-core/include/bornomala.h`:** Authoritative canonical master header containing the full C-ABI surface, preprocessor guard `BORNOMALA_H`, and backward-compatibility alias `BORNO_H`.
+- **`crates/bornomala-core/include/borno.h`:** Thin legacy forwarding header (`#include "bornomala.h"`) under guard `BORNO_LEGACY_FORWARDING_H` with deprecation guidance.
 
 ### C Types Definition
 ```c
-/* Status Codes */
-#define BORNO_OK                     0
-#define BORNO_ERR_NULL_PTR          -1
-#define BORNO_ERR_INVALID_UTF8      -2
-#define BORNO_ERR_PANIC             -3
-#define BORNO_ERR_INVALID_ARGUMENT  -4
+/* Status and Error Codes */
+#define BORNO_OK                      0
+#define BORNO_ERR_NULL_PTR           -1
+#define BORNO_ERR_INVALID_UTF8       -2
+#define BORNO_ERR_PANIC              -3
+#define BORNO_ERR_INVALID_ARGUMENT   -4
+#define BORNO_ERR_INVALID_CONFIG     -5
+#define BORNO_ERR_UNSUPPORTED_SCHEMA -6
 
 /* Input Modes */
-#define BORNO_MODE_PHONETIC         0
-#define BORNO_MODE_PASSTHROUGH      1
+#define BORNO_MODE_PHONETIC          0
+#define BORNO_MODE_PASSTHROUGH       1
+#define BORNO_MODE_FIXED_NATIONAL    2
+#define BORNO_MODE_FIXED_PROBHAT     3
+#define BORNO_MODE_FIXED_BIJOY       4
+
+/* Candidate Kinds */
+#define BORNO_CANDIDATE_PRIMARY_TRANSLITERATION  0
+#define BORNO_CANDIDATE_PHONETIC_ALTERNATIVE    1
+#define BORNO_CANDIDATE_EXACT_LEXICON_MATCH     2
+#define BORNO_CANDIDATE_PREFIX_COMPLETION       3
+#define BORNO_CANDIDATE_SPELLING_CORRECTION     4
 
 /* Event Types */
-#define BORNO_EVENT_INPUT_CHAR          0
-#define BORNO_EVENT_INPUT_STRING        1
-#define BORNO_EVENT_BACKSPACE           2
-#define BORNO_EVENT_DELETE              3
-#define BORNO_EVENT_COMMIT              4
-#define BORNO_EVENT_CANCEL              5
-#define BORNO_EVENT_RESET               6
-#define BORNO_EVENT_NEXT_CANDIDATE      7
-#define BORNO_EVENT_PREV_CANDIDATE      8
-#define BORNO_EVENT_HIGHLIGHT_CANDIDATE 9
-#define BORNO_EVENT_SELECT_CANDIDATE    10
-#define BORNO_EVENT_SET_CURSOR          11
-#define BORNO_EVENT_MOVE_CURSOR_LEFT    12
-#define BORNO_EVENT_MOVE_CURSOR_RIGHT   13
-#define BORNO_EVENT_SWITCH_MODE         14
+#define BORNO_EVENT_INPUT_CHAR           0
+#define BORNO_EVENT_INPUT_STRING         1
+#define BORNO_EVENT_BACKSPACE            2
+#define BORNO_EVENT_DELETE               3
+#define BORNO_EVENT_COMMIT               4
+#define BORNO_EVENT_CANCEL               5
+#define BORNO_EVENT_RESET                6
+#define BORNO_EVENT_NEXT_CANDIDATE       7
+#define BORNO_EVENT_PREV_CANDIDATE       8
+#define BORNO_EVENT_HIGHLIGHT_CANDIDATE  9
+#define BORNO_EVENT_SELECT_CANDIDATE     10
+#define BORNO_EVENT_SET_CURSOR           11
+#define BORNO_EVENT_MOVE_CURSOR_LEFT     12
+#define BORNO_EVENT_MOVE_CURSOR_RIGHT    13
+#define BORNO_EVENT_SWITCH_MODE          14
 
 typedef struct BornoEventC {
     int32_t     event_type;
@@ -261,31 +275,54 @@ typedef struct BornoEventC {
     int32_t     mode_payload;       /* Used for SWITCH_MODE */
 } BornoEventC;
 
+typedef struct BornoStatusC {
+    char* name;
+    char* version;
+    char* active_mode;
+    bool  ready;
+} BornoStatusC;
+
 typedef struct BornoStateC {
-    char*    preedit;                  /* Null-terminated UTF-8 */
-    char*    raw_buffer;               /* Null-terminated UTF-8 */
-    size_t   cursor_pos;               /* Measured in Unicode codepoints */
-    size_t   candidates_count;         /* Number of items in candidates array */
-    char**   candidates;               /* Array of null-terminated UTF-8 strings */
-    int32_t  selected_candidate_index; /* -1 if None, otherwise 0 <= idx < count */
-    bool     is_composing;
-    int32_t  mode;                     /* 0: Phonetic, 1: EnglishPassthrough */
+    char*   preedit;                  /* Null-terminated UTF-8 */
+    char*   raw_buffer;               /* Null-terminated UTF-8 */
+    size_t  cursor_pos;               /* Measured in Unicode codepoints */
+    size_t  candidates_count;         /* Number of items in candidates array */
+    char**  candidates;               /* Array of null-terminated UTF-8 strings */
+    int32_t selected_candidate_index; /* -1 if None, otherwise 0 <= idx < count */
+    bool    is_composing;
+    int32_t mode;                     /* 0: Phonetic, 1: EnglishPassthrough */
 } BornoStateC;
 
 typedef struct BornoProcessResultC {
-    BornoStateC state;                 /* Persistent state snapshot */
-    char*       committed_text;        /* Null-terminated UTF-8 or NULL */
+    BornoStateC state;                /* Persistent state snapshot */
+    char*       committed_text;       /* Null-terminated UTF-8 or NULL */
     bool        cancelled;
     bool        handled;
 } BornoProcessResultC;
 ```
 
-### Memory Ownership Rules
-1. **Output Allocation:** All pointers in `BornoProcessResultC` and `BornoStateC` are allocated by the Rust core allocator.
-2. **Mandatory Disposal:** The caller **must** release returned results by calling `borno_process_result_free_members(&result)` or `borno_state_free_members(&state)`.
-3. **No Direct C `free()`:** Standard C `free()` or C++ `delete` must **never** be invoked on pointers allocated by Rust.
-4. **Input Borrowing:** Pointers passed *into* FFI functions (`*const c_char`, `*const BornoEventC`) are strictly borrowed; the caller retains ownership.
-5. **Unwind Safety:** All FFI entry points wrap inner logic in `std::panic::catch_unwind` and return negative error codes upon panic.
+### In-Place Configuration (`borno_engine_configure_json`)
+```c
+int32_t borno_engine_configure_json(BornoEngineHandle* handle, const char* json_utf8);
+```
+1. **Borrowed String Ownership:** Caller retains full ownership of `json_utf8`. Rust borrows it as a `&str` for parsing, never frees it, and stores no pointers to it.
+2. **Supported Schemas & In-Memory Migration:**
+   - Schema `"1.2.0"`: Current schema, accepted without migration.
+   - Schema `"1.1.0"`: Migrated in-memory to v1.2.0. Missing `dictionary` fields default to empty values.
+   - Schema `"1.0.0"`: Migrated in-memory to v1.2.0. Missing fields default safely.
+   - Unsupported / Future Schemas: Returns `BORNO_ERR_UNSUPPORTED_SCHEMA` (`-6`) without mutating active configuration.
+   - Malformed JSON / Field Type Errors: Returns `BORNO_ERR_INVALID_CONFIG` (`-5`) without mutating active configuration.
+3. **State Preservation:** In-place reconfiguration preserves active composition state (`preedit`, `raw_buffer`, `cursor_pos`, `is_composing`, `mode`).
+4. **Candidate Truncation Qualification:** If `candidate_display_limit` is lowered below the current candidate count, existing candidates and candidate details are truncated to the new limit without clearing or re-ranking.
+
+### Memory Ownership & Lifecycle Rules
+1. **Preferred Deallocation:** Callers SHOULD always release output structures using the corresponding structure cleanup helper (`borno_status_free_members`, `borno_state_free_members`, `borno_process_result_free_members`). These helpers safely free all nested allocations, null dangling pointers, and reset status flags.
+2. **Individual Deallocation & Double-Free Prevention:** Standalone string members (`name`, `version`, `active_mode`, `preedit`, `raw_buffer`, `committed_text`) may be freed individually using `borno_string_free()`, provided the caller **immediately assigns that pointer field to `NULL`**. Callers must NEVER free a member individually and subsequently invoke the structure cleanup helper while that pointer remains dangling (preventing double-free UB).
+3. **Candidate Array Ownership:** Candidate inner strings and the outer pointer array (`candidates`, `char**`) MUST be managed exclusively using `borno_state_free_members()` or `borno_process_result_free_members()`. `borno_string_free()` must NEVER be used on the outer array (`char**`), as doing so corrupts the allocator heap.
+4. **No Direct C `free()`:** Standard C `free()` or C++ `delete` must **never** be invoked on pointers allocated by Rust.
+5. **Output Structure Overwrite & Reuse:** On success (`BORNO_OK`), output-writing functions overwrite all structure members with fresh Rust allocations. The engine does NOT free previously held pointers. Callers MUST call the appropriate cleanup helper before reusing an already-populated structure to avoid memory leaks.
+6. **Error Paths & Zero-Initialization:** Early error returns (`-1`, `-2`, `-4`, `-5`, `-6`) leave output structures completely untouched. Zero-initialization before first call (`memset` or `= {0}`) is a strongly recommended caller safety practice so that invoking cleanup helpers on error paths is a safe no-op.
+7. **Unwind Safety:** All FFI entry points wrap inner logic in `std::panic::catch_unwind` and return negative error codes upon panic (`BORNO_ERR_PANIC`, `-3`). Cleanup safety after a panic is not guaranteed by the implementation.
 
 ---
 
