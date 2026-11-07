@@ -16,7 +16,7 @@
 | [`BACKLOG-04`](#backlog-04-accent-color-selector-for-high-contrast--dark-modes) | Accent Color Selector for High Contrast & Dark Modes | M9 | **M9 Refinement** | UI / Customization | `Planned` |
 | [`BACKLOG-05`](#backlog-05-light-theme-contrast--legibility-overhaul) | Light Theme Contrast & Legibility Overhaul | M9 | **M9 Refinement** | UI / Accessibility | `Planned` |
 | [`BACKLOG-06`](#backlog-06-candidate-window-orientation-default-horizontal) | Candidate Window Orientation Default (`Horizontal`) | M9 | **M9 Refinement** | Usability / Defaults | `Planned` |
-| [`BACKLOG-07`](#backlog-07-windows-tsf-configuration-path-synchronization) | Windows TSF Configuration Path Synchronization | M9 | **M9 Refinement** | Native Adapter | `Planned` |
+| [`BACKLOG-07`](#backlog-07-windows-tsf-configuration-path-synchronization) | Windows TSF Configuration Path Synchronization | M9 | **M9 Refinement** | Native Adapter | `Resolved (WP-05)` |
 | [`BACKLOG-08`](#backlog-08-windows-input-method-switching-scope-per-window-vs-global) | Windows Input Method Switching Scope (Per-Window vs Global) | M9 | **M9 / M12** | OS Integration | `Documented & Planned` |
 | [`BACKLOG-09`](#backlog-09-windows-tsf-language-profile-ordering-bangladesh-priority) | Windows TSF Language Profile Locale Ordering (Bangladesh Priority) | M9 | **M9 Refinement** | Native TSF | `Planned` |
 | [`BACKLOG-10`](#backlog-10-independent-theming-for-floating-bar-vs-sandbox-app) | Independent Theming & Appearance for Floating Bar vs. Sandbox App | M9 | **M9 Refinement** | UI / Customization | `Planned` |
@@ -118,11 +118,14 @@
 ### BACKLOG-07: Windows TSF Configuration Path Synchronization
 
 - **Discovery Context:**  
-  `native/borno-tsf/borno_tsf.cpp` resolved config from `%APPDATA%\com.bornomala.desktop\config.json`, whereas Tauri v2 (`tauri.conf.json`) uses identifier `"com.bornomala.sandbox"`, writing to `%APPDATA%\com.bornomala.sandbox\config.json`.
-- **Resolution Plan:**
-  1. Update `borno_tsf.cpp` `GetConfigFilePath()` to inspect `com.bornomala.sandbox\config.json` first, falling back to `com.bornomala.desktop\config.json`.
-  2. Ensure changes made in the settings drawer dynamically propagate to the TSF floating candidate window in real time.
-- **Target Milestone:** **Milestone M9 Refinement Pass**.
+  `native/borno-tsf/borno_tsf.cpp` resolved config from `%APPDATA%\com.bornomala.desktop\config.json`, whereas Tauri v2 (`tauri.conf.json`) previously used identifier `"com.bornomala.sandbox"`, writing to `%APPDATA%\com.bornomala.sandbox\config.json`.
+- **Resolution Status (WP-05):**
+  1. **Static Configuration-Path Alignment & Migration Implementation Complete:** Updated `src-tauri/tauri.conf.json` application identifier to `"com.bornomala.desktop"`, aligning desktop runtime with native adapters (`borno-tsf` and `bornomala-fcitx5`) to the single canonical namespace `%APPDATA%\com.bornomala.desktop\config.json`.
+  2. Implemented unified, failure-safe, and idempotent startup orchestration (`config_store::startup_pipeline`) that discovers legacy configurations (`com.bornomala.sandbox` and `com.borno.sandbox`), semantically upgrades them to schema `1.2.0`, and safely writes to the canonical destination while preserving legacy source files intact.
+  3. Added automated test coverage verifying migration precedence, symlink rejection, pre-upgrade/normalization backups, and degraded-session recovery.
+  4. **Live Runtime Verification Pending:** While static path alignment and file-level persistence migration are implemented and verified via automated test suites, interactive end-to-end runtime synchronization between the running desktop UI and an active registered Windows TSF session requires live-host execution and remains pending until live testing is authorized.
+- **Target Milestone:** **Milestone M9 Refinement Pass (WP-05)**.
+- **Status:** **Implementation Complete (Static Path Alignment & Migration Verified) — Live Runtime TSF Verification Pending**.
 
 ---
 

@@ -51,25 +51,22 @@ To prevent race conditions, file corruption, and write conflicts across processe
 - **Sole Authorized Writer:** The Tauri desktop application (and in M12, the standalone desktop manager) is the **exclusive read/write owner** of `config.json`. It owns safe atomic replacement via temporary file rename (`save_config_safe`), corrupted-file backups (`.corrupt.<timestamp>`), invalid schema backups (`.invalid.<timestamp>`), and structural schema validation.
 - **Read-Only Consumer:** The native Windows TSF DLL (`bornomala_tsf.dll`) is an in-process COM server loaded by arbitrary host processes (Notepad, Microsoft Word, web browsers). It is strictly a **read-only consumer**. It must **never** create, write, delete, or rename configuration files.
 
-### 2.2 Canonical Path Resolution & Coexistence Lifecycle
-The configuration directory evolves across project milestones according to a single canonical contract:
+### 2.2 Canonical Path Resolution & Migration Lifecycle (Unified in WP-05)
+Under WP-05, the configuration namespace has been unified across the desktop application and native adapters to a single canonical contract:
 
-1. **Active Development Path (Milestones M0–M11):**
-   - Path: `%APPDATA%\com.bornomala.sandbox\config.json`
-   - Owned by: `src-tauri/tauri.conf.json` (`"identifier": "com.bornomala.sandbox"`).
-2. **Production Suite Path (Milestone M12 onward):**
-   - Path: `%APPDATA%\com.bornomala.desktop\config.json`
-   - Governed by: The unified production desktop installer (WiX / NSIS).
-3. **M12 Migration Specification:**
-   - **Migration Trigger:** Executed once by the M12 installer or during first launch of the production desktop application.
-   - **Fresh Install:** If `com.bornomala.desktop\config.json` does not exist and no sandbox configuration exists, write default configuration to `com.bornomala.desktop\config.json`.
-   - **Clean Migration:** If `com.bornomala.desktop\config.json` does not exist but `com.bornomala.sandbox\config.json` exists, validate the sandbox file. If valid, copy it to `com.bornomala.desktop\config.json`.
-   - **Coexistence / Conflict Resolution:** If configuration files exist at *both* locations (e.g. developer running both sandbox and desktop builds), the production desktop application treats `%APPDATA%\com.bornomala.desktop\config.json` as authoritative. The sandbox file is left untouched to prevent breaking active developer sandbox testing.
-   - **Corrupt Source Handling:** If the sandbox configuration is malformed or invalid during migration, the migration halts, leaves the corrupted file in place for developer inspection, and writes clean defaults to the desktop directory.
-4. **Startup Loading vs. Dynamic Reload:**
+1. **Canonical Application Path:**
+   - Path: `%APPDATA%\com.bornomala.desktop\config.json` (Windows), `~/.config/com.bornomala.desktop/config.json` (Linux)
+   - Owned by: `src-tauri/tauri.conf.json` (`"identifier": "com.bornomala.desktop"`).
+   - Matched by: Native Windows TSF (`native/borno-tsf/borno_tsf.cpp`) and Linux Fcitx 5 (`native/bornomala-fcitx5/bornomala.cpp`).
+2. **Startup Discovery & Migration Contract (`startup_pipeline`):**
+   - **Authoritative Canonical File:** If `com.bornomala.desktop\config.json` exists, it is evaluated directly. If valid, loaded; if corrupt/invalid, backed up and restored to defaults; if future SemVer, preserved byte-for-byte with persistence locked. Legacy files are never inspected if canonical file is present.
+   - **Primary Legacy Sibling Migration:** If canonical configuration is absent and `com.bornomala.sandbox\config.json` exists, validated and upgraded to schema `1.2.0`, atomically saved to canonical destination, and an exclusive `.bak_migration` backup is created. Legacy source file remains intact and untouched on disk.
+   - **Secondary Legacy Sibling Migration:** If canonical and primary are absent, and `com.borno.sandbox\config.json` exists, migrated identically to canonical destination.
+   - **Clean Installation:** If neither canonical nor legacy configurations exist, fresh defaults are atomically established at `com.bornomala.desktop\config.json`.
+3. **Startup Loading vs. Dynamic Reload:**
    - **Startup Loading:** Read once during input service initialization.
    - **Dynamic Reload:** Windows TSF polls file attributes (`GetFileAttributesExW` with tick throttle $\ge 50\text{ms}$) to detect changes in write-time, file size, or hash.
-   - *Verification Status:* Startup loading is verified in code inspection. Dynamic live reload in external host applications remains an **unverified hypothesis** until an end-to-end runtime test is executed.
+   - *Verification Status:* Startup loading and migration pipeline are verified across 72 isolated automated tests in `persistence_suite.rs`. Dynamic live reload in external host applications remains an **unverified hypothesis** until an end-to-end runtime test is executed.
 
 ---
 

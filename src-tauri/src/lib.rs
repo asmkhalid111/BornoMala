@@ -1,6 +1,7 @@
 pub mod config_store;
 
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 use tauri::{Manager, State};
 use bornomala_core::{BornoConfig, BornoEngine, EngineEvent, EngineStatus, ProcessResult};
@@ -12,6 +13,7 @@ pub struct AppState {
     pub config_path: PathBuf,
     pub persistence_status: Mutex<config_store::PersistenceStatus>,
     pub effective_config: Mutex<BornoConfig>,
+    pub session_degraded: AtomicBool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +32,28 @@ pub struct DeterministicTestResult {
     pub actual_preedit: String,
     pub candidates: Vec<String>,
     pub message: String,
+}
+
+/// Tauri-specific path resolver implementing `config_store::ConfigPathResolver`.
+pub struct TauriConfigPathResolver {
+    canonical_path: Result<PathBuf, String>,
+}
+
+impl TauriConfigPathResolver {
+    pub fn from_app<R: tauri::Runtime>(app: &tauri::App<R>) -> Self {
+        let canonical_path = app
+            .path()
+            .app_config_dir()
+            .map(|dir| dir.join("config.json"))
+            .map_err(|e| e.to_string());
+        Self { canonical_path }
+    }
+}
+
+impl config_store::ConfigPathResolver for TauriConfigPathResolver {
+    fn resolve_canonical_path(&self) -> Result<PathBuf, String> {
+        self.canonical_path.clone()
+    }
 }
 
 #[tauri::command]
@@ -69,17 +93,48 @@ fn get_config_path(state: State<'_, AppState>) -> Result<String, String> {
     Ok(state.config_path.to_string_lossy().to_string())
 }
 
-#[tauri::command]
-fn save_config(config: BornoConfig, state: State<'_, AppState>) -> Result<BornoConfig, String> {
+/// Shared internal helper for validated configuration modification and atomic persistence.
+pub fn apply_and_persist_config(
+    state: &AppState,
+    config: BornoConfig,
+) -> Result<BornoConfig, String> {
     let _guard = state.config_mutex.lock().map_err(|e| e.to_string())?;
 
-    // Check if persistence is locked due to unsupported version
+    // Reject if session is already degraded from prior post-commit failure
+    if state.session_degraded.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(
+            "Cannot modify configuration: session is in a degraded state. Restart the application."
+                .to_string(),
+        );
+    }
+
+    // Reject empty path upfront
+    if state.config_path.as_os_str().is_empty() {
+        return Err(
+            "Cannot modify configuration: configuration path is empty (unresolved).".to_string(),
+        );
+    }
+
+    // Inspect persistence status: strictly reject non-Active states
     {
         let status = state.persistence_status.lock().map_err(|e| e.to_string())?;
-        if let config_store::PersistenceStatus::LockedUnsupportedVersion { ref version } = *status {
-            return Err(format!(
-                "Configuration saving is locked: unsupported schema version '{version}' is present on disk. Reset to restore defaults."
-            ));
+        match *status {
+            config_store::PersistenceStatus::LockedUnsupportedVersion { ref version } => {
+                return Err(format!(
+                    "Configuration saving is locked: unsupported schema version '{version}' is present on disk. Reset to restore defaults."
+                ));
+            }
+            config_store::PersistenceStatus::ReadOnlyMissingWriteFailed(ref err) => {
+                return Err(format!(
+                    "Cannot modify configuration: persistence is read-only (missing write failed: {err})"
+                ));
+            }
+            config_store::PersistenceStatus::ReadOnlyPermissionDenied(ref err) => {
+                return Err(format!(
+                    "Cannot modify configuration: persistence is read-only (permission denied: {err})"
+                ));
+            }
+            config_store::PersistenceStatus::Active => {}
         }
     }
 
@@ -91,50 +146,181 @@ fn save_config(config: BornoConfig, state: State<'_, AppState>) -> Result<BornoC
 
     // Step 3: Reconfigure running engine under engine lock
     let mut engine = state.engine.lock().map_err(|_| {
-        "Settings saved to disk, but active engine is unresponsive. Restart required.".to_string()
+        state.session_degraded.store(true, std::sync::atomic::Ordering::SeqCst);
+        let _ = state.persistence_status.lock().map(|mut s| {
+            *s = config_store::PersistenceStatus::ReadOnlyPermissionDenied(
+                "Degraded session: configuration saved to disk, but runtime engine sync failed. Restart required.".to_string(),
+            );
+        });
+        "Settings saved to disk, but active typing engine is unresponsive (mutex poisoned). Restart required.".to_string()
     })?;
     engine.configure(&config);
+    drop(engine);
 
-    // Step 4: Update effective_config and persistence_status
-    let mut eff = state.effective_config.lock().map_err(|e| e.to_string())?;
+    // Step 4: Update effective_config
+    let mut eff = state.effective_config.lock().map_err(|e| {
+        state.session_degraded.store(true, std::sync::atomic::Ordering::SeqCst);
+        e.to_string()
+    })?;
     *eff = config.clone();
+    drop(eff);
 
-    let mut status = state.persistence_status.lock().map_err(|e| e.to_string())?;
+    // Step 5: Update persistence status
+    let mut status = state.persistence_status.lock().map_err(|e| {
+        state.session_degraded.store(true, std::sync::atomic::Ordering::SeqCst);
+        e.to_string()
+    })?;
     *status = config_store::PersistenceStatus::Active;
 
     Ok(config)
 }
 
 #[tauri::command]
-fn reset_config(state: State<'_, AppState>) -> Result<ConfigResponse, String> {
+fn save_config(config: BornoConfig, state: State<'_, AppState>) -> Result<BornoConfig, String> {
+    apply_and_persist_config(&state, config)
+}
+
+/// Executes the full reset transaction including disk revalidation and degraded-session recovery.
+pub fn execute_reset_transaction(
+    state: &AppState,
+    faults: Option<config_store::ResetFaultInjection>,
+) -> Result<ConfigResponse, String> {
+    // 1. Acquire coarse-grained configuration mutex
     let _guard = state.config_mutex.lock().map_err(|e| e.to_string())?;
 
-    let is_unsupported = {
-        let status = state.persistence_status.lock().map_err(|e| e.to_string())?;
-        matches!(*status, config_store::PersistenceStatus::LockedUnsupportedVersion { .. })
+    // 2. Reject if session is already degraded from prior post-commit failure
+    if state.session_degraded.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("Cannot reset configuration: session is in a degraded state following a previous partial-commit failure. Restart the application.".to_string());
+    }
+
+    // 3. Reject empty path upfront
+    if state.config_path.as_os_str().is_empty() {
+        return Err("Cannot reset configuration: configuration path is empty (unresolved).".to_string());
+    }
+
+    // 4. Confirm in-memory persistence status permits recovery
+    let status_guard = state.persistence_status.lock().map_err(|e| e.to_string())?;
+    match *status_guard {
+        config_store::PersistenceStatus::ReadOnlyMissingWriteFailed(ref err) => {
+            return Err(format!("Cannot reset configuration: persistence is read-only (missing write failed: {err})"));
+        }
+        config_store::PersistenceStatus::ReadOnlyPermissionDenied(ref err) => {
+            return Err(format!("Cannot reset configuration: persistence is read-only (permission denied: {err})"));
+        }
+        _ => {}
+    }
+    drop(status_guard);
+
+    // 5. Revalidate disk file state before attempting reset
+    let disk_bytes = match std::fs::read(&state.config_path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Vec::new()
+        }
+        Err(e) => {
+            return Err(format!("Cannot reset configuration: failed to inspect current configuration on disk: {e}"));
+        }
     };
 
-    let (default_config, backup_path) = config_store::reset_config_safe(&state.config_path, is_unsupported)?;
+    let is_unsupported_on_disk = if !disk_bytes.is_empty() {
+        if let Ok(content_str) = std::str::from_utf8(&disk_bytes) {
+            match config_store::classify_schema_version(content_str) {
+                config_store::SchemaClassification::UnsupportedFutureStable(_)
+                | config_store::SchemaClassification::UnsupportedFuturePrerelease(_) => true,
+                _ => false,
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
 
-    // Reconfigure running engine under lock
-    let mut engine = state.engine.lock().map_err(|_| {
-        "Settings reset on disk, but active engine is unresponsive. Restart required.".to_string()
-    })?;
-    engine.configure(&default_config);
+    // 6. Execute disk reset:
+    // If unsupported, creates .bak_unsupported.<timestamp> using exact in-memory disk_bytes
+    // via exclusive creation with collision retry, followed by atomic default replacement.
+    let (default_config, backup_path) = config_store::reset_config_safe_with_faults(
+        &state.config_path,
+        if is_unsupported_on_disk { Some(&disk_bytes) } else { None },
+        faults.map_or(false, |f| f.fail_backup),
+        faults.map_or(false, |f| f.fail_default_write),
+    )?;
 
-    // Update effective_config and persistence_status
-    let mut eff = state.effective_config.lock().map_err(|e| e.to_string())?;
-    *eff = default_config.clone();
+    // --- POINT OF DISK COMMIT ---
+    // At this point, canonical file on disk has been replaced with defaults!
 
-    let mut status = state.persistence_status.lock().map_err(|e| e.to_string())?;
-    *status = config_store::PersistenceStatus::Active;
+    // 7. Reconfigure running engine under engine lock
+    let engine_fail = faults.map_or(false, |f| f.fail_engine_lock);
+    let engine_res = (|| -> Result<(), String> {
+        if engine_fail {
+            return Err("Simulated engine lock/poison failure".to_string());
+        }
+        let mut engine = state.engine.lock().map_err(|_| {
+            "Settings reset on disk, but active typing engine is unresponsive (mutex poisoned). Restart required.".to_string()
+        })?;
+        engine.configure(&default_config);
+        Ok(())
+    })();
 
+    if let Err(e) = engine_res {
+        // Degraded Session State: Disk is committed, runtime engine sync failed!
+        state.session_degraded.store(true, std::sync::atomic::Ordering::SeqCst);
+        let _ = state.persistence_status.lock().map(|mut s| {
+            *s = config_store::PersistenceStatus::ReadOnlyPermissionDenied(
+                "Degraded session: disk reset to defaults, but runtime engine sync failed. Restart required.".to_string(),
+            );
+        });
+        return Err(format!("Configuration reset to defaults on disk, but active typing engine failed to reconfigure ({e}). The session is now degraded. Restart required."));
+    }
+
+    // 8. Update effective in-memory configuration
+    let eff_fail = faults.map_or(false, |f| f.fail_effective_config_lock);
+    let eff_res = (|| -> Result<(), String> {
+        if eff_fail {
+            return Err("Simulated effective_config lock/poison failure".to_string());
+        }
+        let mut eff = state.effective_config.lock().map_err(|_| {
+            "Settings reset on disk, but in-memory configuration mutex is poisoned. Restart required.".to_string()
+        })?;
+        *eff = default_config.clone();
+        Ok(())
+    })();
+
+    if let Err(e) = eff_res {
+        state.session_degraded.store(true, std::sync::atomic::Ordering::SeqCst);
+        return Err(format!("Configuration reset to defaults on disk, but in-memory state update failed ({e}). Restart required."));
+    }
+
+    // 9. Update persistence status to Active
+    let status_fail = faults.map_or(false, |f| f.fail_persistence_status_lock);
+    let status_res = (|| -> Result<(), String> {
+        if status_fail {
+            return Err("Simulated persistence_status lock/poison failure".to_string());
+        }
+        let mut status = state.persistence_status.lock().map_err(|_| {
+            "Settings reset on disk, but persistence status mutex is poisoned. Restart required.".to_string()
+        })?;
+        *status = config_store::PersistenceStatus::Active;
+        Ok(())
+    })();
+
+    if let Err(e) = status_res {
+        state.session_degraded.store(true, std::sync::atomic::Ordering::SeqCst);
+        return Err(format!("Configuration reset to defaults on disk, but persistence status update failed ({e}). Restart required."));
+    }
+
+    // 10. Return truthful success response
     Ok(ConfigResponse {
         config: default_config,
         status: config_store::PersistenceStatus::Active,
         config_path: state.config_path.to_string_lossy().to_string(),
         backup_created: backup_path,
     })
+}
+
+#[tauri::command]
+fn reset_config(state: State<'_, AppState>) -> Result<ConfigResponse, String> {
+    execute_reset_transaction(&state, None)
 }
 
 #[tauri::command]
@@ -154,19 +340,26 @@ fn export_config(path: Option<String>, state: State<'_, AppState>) -> Result<Str
     serde_json::to_string_pretty(&config).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn import_config(json_or_path: String, state: State<'_, AppState>) -> Result<BornoConfig, String> {
+pub fn import_config_internal(
+    json_or_path: &str,
+    state: &AppState,
+) -> Result<BornoConfig, String> {
     let content = if json_or_path.trim().starts_with('{') {
-        json_or_path
+        json_or_path.to_string()
     } else {
-        let import_path = std::path::Path::new(&json_or_path);
+        let import_path = std::path::Path::new(json_or_path);
         if !import_path.exists() {
             return Err(format!("Import file not found: {json_or_path}"));
         }
         std::fs::read_to_string(import_path).map_err(|e| e.to_string())?
     };
     let config = BornoConfig::from_json_str(&content).map_err(|e| e.to_string())?;
-    save_config(config, state)
+    apply_and_persist_config(state, config)
+}
+
+#[tauri::command]
+fn import_config(json_or_path: String, state: State<'_, AppState>) -> Result<BornoConfig, String> {
+    import_config_internal(&json_or_path, &state)
 }
 
 #[tauri::command]
@@ -221,17 +414,12 @@ pub fn run() {
         .setup(|app| {
             println!("[Borno] Setup hook called! Active windows: {}", app.webview_windows().len());
 
-            // Resolve OS application configuration path
-            let config_dir = app.path().app_config_dir().unwrap_or_else(|e| {
-                eprintln!("[Borno] Warning: Failed to resolve app_config_dir: {e}. Falling back to local directory.");
-                PathBuf::from(".")
-            });
-            let config_path = config_dir.join("config.json");
-
-            let (config, status, outcome) = config_store::load_config(&config_path);
+            // Resolve OS application configuration path via startup_pipeline
+            let resolver = TauriConfigPathResolver::from_app(app);
+            let (config, status, outcome, resolved_path) = config_store::startup_pipeline(&resolver);
             println!(
-                "[Borno] Configuration loaded from {}: outcome={:?}, status={:?}",
-                config_path.display(),
+                "[Borno] Configuration startup pipeline completed: path={}, outcome={:?}, status={:?}",
+                resolved_path.display(),
                 outcome,
                 status
             );
@@ -241,9 +429,10 @@ pub fn run() {
             app.manage(AppState {
                 engine: Mutex::new(engine),
                 config_mutex: Mutex::new(()),
-                config_path,
+                config_path: resolved_path,
                 persistence_status: Mutex::new(status),
                 effective_config: Mutex::new(config),
+                session_degraded: AtomicBool::new(false),
             });
 
             if let Some(window) = app.get_webview_window("main") {

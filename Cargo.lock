@@ -307,6 +307,7 @@ name = "bornomala-desktop"
 version = "0.1.0"
 dependencies = [
  "bornomala-core",
+ "semver",
  "serde",
  "serde_json",
  "tauri",
