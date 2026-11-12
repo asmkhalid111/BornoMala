@@ -7,6 +7,9 @@ use tauri::{Manager, State};
 use bornomala_core::{BornoConfig, BornoEngine, EngineEvent, EngineStatus, ProcessResult};
 use serde::{Deserialize, Serialize};
 
+/// Authoritative root third-party notices and licensing acknowledgements embedded at compile time.
+const THIRD_PARTY_NOTICES: &str = include_str!("../../THIRD-PARTY-NOTICES.md");
+
 pub struct AppState {
     pub engine: Mutex<BornoEngine>,
     pub config_mutex: Mutex<()>,
@@ -401,6 +404,12 @@ fn get_layout_definition(layout_id: String) -> Result<bornomala_core::layout::La
     Ok(bornomala_core::layout::get_layout_by_id(id).clone())
 }
 
+/// Returns the compile-time embedded third-party notices and licensing acknowledgements.
+#[tauri::command]
+fn get_third_party_notices() -> Result<String, String> {
+    Ok(THIRD_PARTY_NOTICES.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     std::panic::set_hook(Box::new(|info| {
@@ -456,7 +465,8 @@ pub fn run() {
             reset_config,
             reset_config_to_defaults,
             export_config,
-            import_config
+            import_config,
+            get_third_party_notices
         ])
         .run(tauri::generate_context!());
 
@@ -464,5 +474,39 @@ pub fn run() {
         let err_msg = format!("Tauri runtime error: {}\n", err);
         let _ = std::fs::write("borno_crash.log", &err_msg);
         eprintln!("{}", err_msg);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_third_party_notices_returns_embedded_root_notice() {
+        let notices = get_third_party_notices()
+            .expect("get_third_party_notices should succeed without error");
+
+        assert!(!notices.is_empty(), "Embedded notices must not be empty");
+        assert_eq!(notices, THIRD_PARTY_NOTICES);
+        assert!(
+            notices.starts_with("# Third-Party Notices & Licensing Acknowledgements"),
+            "Embedded notices should begin with the authoritative heading"
+        );
+
+        for required in [
+            "Leipzig Corpora Collection",
+            "Creative Commons Attribution 4.0",
+            "option-ext",
+            "Mozilla Public License Version 2.0",
+            "Unicode-3.0",
+            "GCC Runtime Library Exception",
+            "GNU Lesser General Public License",
+        ] {
+            assert!(
+                notices.contains(required),
+                "Embedded notices missing required content: {}",
+                required
+            );
+        }
     }
 }

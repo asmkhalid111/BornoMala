@@ -11,6 +11,20 @@ find_package(Fcitx5Utils REQUIRED)
 
 include(GNUInstallDirs)
 
+# Resolve repository workspace root unconditionally (for staticlib discovery and notice installation)
+set(WORKSPACE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
+get_filename_component(WORKSPACE_ROOT "${WORKSPACE_ROOT}" ABSOLUTE)
+
+# Authoritative third-party licensing notices file at repository root
+set(NOTICES_PATH "${WORKSPACE_ROOT}/THIRD-PARTY-NOTICES.md")
+if(NOT EXISTS "${NOTICES_PATH}")
+    message(FATAL_ERROR
+        "Required third-party notices file does not exist:\n"
+        "  ${NOTICES_PATH}\n"
+        "Ensure repository root THIRD-PARTY-NOTICES.md is present before configuring."
+    )
+endif()
+
 # ==============================================================================
 # Locate libbornomala_core.a Static Library
 # ==============================================================================
@@ -35,9 +49,7 @@ if(DEFINED BORNOMALA_CORE_STATIC AND NOT "${BORNOMALA_CORE_STATIC}" STREQUAL "")
     endif()
     message(STATUS "Using explicitly provided libbornomala_core.a: ${BORNOMALA_CORE_STATIC}")
 else()
-    # Automatic Discovery
-    set(WORKSPACE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
-    get_filename_component(WORKSPACE_ROOT "${WORKSPACE_ROOT}" ABSOLUTE)
+    # Automatic Discovery (using WORKSPACE_ROOT resolved above)
 
     set(CHECKED_LOCATIONS "")
 
@@ -158,3 +170,4 @@ configure_file(bornomala.conf.in bornomala-im.conf @ONLY)
 install(TARGETS bornomala DESTINATION ${CMAKE_INSTALL_LIBDIR}/fcitx5)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/bornomala.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/fcitx5/addon)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/bornomala-im.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/fcitx5/inputmethod RENAME bornomala.conf)
+install(FILES "${NOTICES_PATH}" DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/bornomala" RENAME "THIRD-PARTY-NOTICES.md")

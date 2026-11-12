@@ -6,6 +6,14 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 FCITX_SRC_DIR="$PROJECT_ROOT/native/bornomala-fcitx5"
 BUILD_DIR="${HOME}/bornomala-fcitx5-build"
 TARGET_DIR="${PROJECT_ROOT}/target"
+NOTICES_FILE="$PROJECT_ROOT/THIRD-PARTY-NOTICES.md"
+DOC_DIR="${XDG_DATA_HOME:-${HOME}/.local/share}/doc/bornomala"
+
+# Validate authoritative third-party notices file before creating directories or running builds
+if [[ ! -f "$NOTICES_FILE" ]]; then
+    echo "Error: Required third-party notices file not found at: $NOTICES_FILE" >&2
+    exit 1
+fi
 
 echo "=== BornoMala Fcitx 5 User-Mode Installer ==="
 
@@ -25,6 +33,7 @@ mkdir -p "${HOME}/.local/lib/fcitx5"
 mkdir -p "${HOME}/.local/share/fcitx5/addon"
 mkdir -p "${HOME}/.local/share/fcitx5/inputmethod"
 mkdir -p "${HOME}/.local/share/icons/hicolor/64x64/apps"
+mkdir -p "$DOC_DIR"
 
 # 4. Copy addon artifacts
 echo "[4/5] Installing addon artifacts..."
@@ -34,6 +43,7 @@ cp -f "$BUILD_DIR/bornomala-im.conf" "${HOME}/.local/share/fcitx5/inputmethod/bo
 if [[ -f "$FCITX_SRC_DIR/data/bornomala.png" ]]; then
     cp -f "$FCITX_SRC_DIR/data/bornomala.png" "${HOME}/.local/share/icons/hicolor/64x64/apps/bornomala.png"
 fi
+cp -f "$NOTICES_FILE" "$DOC_DIR/THIRD-PARTY-NOTICES.md"
 
 # 5. Environment & Daemon reload
 echo "[5/5] Configuring environment and reloading Fcitx 5..."
