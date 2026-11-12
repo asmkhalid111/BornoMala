@@ -22,9 +22,15 @@ milestones/remediation/
 │   ├── SPECIFICATION.md                          # Cursor arithmetic & UTF-8 synchronization spec
 │   ├── IMPLEMENTATION-REPORT.md                  # Implementation evidence and invariant audit
 │   └── COMPLETION-REPORT.md                      # Post-implementation closure report
-└── WP-04-c-abi-header-unification/                 # Fourth remediation phase (Closed)
-    ├── SPECIFICATION.md                          # C-ABI header unification specification
-    └── COMPLETION-REPORT.md                      # Post-implementation closure report
+├── WP-04-c-abi-header-unification/                 # Fourth remediation phase (Closed)
+│   ├── SPECIFICATION.md                          # C-ABI header unification specification
+│   └── COMPLETION-REPORT.md                      # Post-implementation closure report
+├── WP-05-desktop-app-identifier-migration/         # Fifth remediation phase (Closed — Committed Locally)
+│   ├── SPECIFICATION.md                          # Identifier migration & persistence unification spec
+│   └── COMPLETION-REPORT.md                      # Post-implementation validation report
+├── WP-06-licensing-compliance/                     # Sixth remediation phase (Closed w/ Open RV-11 Risk)
+│   └── SPECIFICATION.md                          # CC BY 4.0 licensing compliance & notices spec
+└── FINAL-REMEDIATION-CLOSURE-REPORT.md             # Consolidated closure for WP-05–WP-I, Selectability & Cursor Audit
 ```
 
 ---
@@ -38,8 +44,9 @@ milestones/remediation/
 | **WP-02** | [Candidate Integrity & Contract Test Alignment](WP-02-candidate-integrity/COMPLETION-REPORT.md) | Remove `candidates.rs` fixtures, realign contract and config tests | **Closed (w/ Limitations)** | 2026-10-26 |
 | **WP-03** | [Unicode In-Composition Cursor Arithmetic](WP-03-cursor-arithmetic/COMPLETION-REPORT.md) | Correct `lib.rs:1316` scalar vs byte dimension mismatch | **Closed (w/ Limitations)** | 2026-10-26 |
 | **WP-04** | [C-ABI Header Unification](WP-04-c-abi-header-unification/COMPLETION-REPORT.md) | Synchronize `borno.h` with `bornomala.h` | **Closed** | 2026-11-03 |
-| **WP-05** | Desktop App Identifier & Configuration Migration | Unify `com.bornomala.desktop` across Tauri and native adapters | *Scheduled* | — |
-| **WP-06** | Licensing Compliance & Notices | Add `THIRD-PARTY-NOTICES.md` with Leipzig CC BY 4.0 attribution | *Scheduled* | — |
+| **WP-05** | [Desktop App Identifier & Configuration Migration](WP-05-desktop-app-identifier-migration/COMPLETION-REPORT.md) | Unify `com.bornomala.desktop` across Tauri and native adapters | **Closed (Committed `223b7a3`, Local)** | 2026-11-06 |
+| **WP-06** | [Licensing Compliance & Notices](WP-06-licensing-compliance/SPECIFICATION.md) | Add `THIRD-PARTY-NOTICES.md`, desktop About & Notices tab, Fcitx/TSF packaging rules | **Closed (w/ Open `RV-11` Risk)** | 2026-11-12 |
+| **WP-A – WP-I & Selectability** | [Final Remediation Closure Report](FINAL-REMEDIATION-CLOSURE-REPORT.md) | Settings draft lifecycle (`WP-A`), ellipsis (`WP-B`), digit collision (`WP-C`), Windows GNU manifest (`WP-D`–`WP-I`), UI selectability, canonical `Borno-Sandbox.exe` reconciliation, deferred cursor audit | **Closed (w/ Deferred `RV-08.1` / Linux-macOS Scope)** | 2026-11-12 |
 
 ---
 
