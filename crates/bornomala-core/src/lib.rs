@@ -438,29 +438,11 @@ impl BornoEngine {
             && !self.state.preedit.is_empty()
             && self.state.preedit != "্"
         {
-            let mut text = if let Some(idx) = self.state.selected_candidate_index {
-                if idx < self.state.candidates.len() {
-                    self.state.candidates[idx].clone()
-                } else if !self.state.candidates.is_empty() {
-                    self.state.candidates[0].clone()
-                } else {
-                    self.state.preedit.clone()
-                }
-            } else if !self.state.candidates.is_empty() {
-                self.state.candidates[0].clone()
-            } else {
-                self.state.preedit.clone()
-            };
-            if self.state.mode == InputMode::Phonetic && self.auto_convert_period_to_dari {
-                text = self.apply_auto_dari(&text);
-            }
-            Some(unicode::normalize_nfc(&text))
+            let text = self.selected_or_preedit_text();
+            self.finalize_commit_text(text)
         } else {
             None
         };
-        if let Some(ref c) = committed {
-            self.last_committed_char = c.chars().last();
-        }
         self.clear_composition();
         self.fixed_engine.reset_state();
         self.state.mode = m;
@@ -778,10 +760,11 @@ impl BornoEngine {
             EngineEvent::SelectCandidate(idx) => {
                 if idx < self.state.candidates.len() {
                     let text = self.state.candidates[idx].clone();
+                    let committed = self.finalize_commit_text(text);
                     self.clear_composition();
                     ProcessResult {
                         state: self.state.clone(),
-                        committed_text: Some(text),
+                        committed_text: committed,
                         cancelled: false,
                         handled: true,
                     }
@@ -1205,7 +1188,7 @@ impl BornoEngine {
     }
 
     /// Converts a trailing period to Bengali Dáñṛi U+0964 if auto-convert is enabled and
-    /// the period is not part of a numeric or domain context.
+    /// the period is not part of a numeric, domain, or ellipsis/multi-period context.
     fn apply_auto_dari(&self, text: &str) -> String {
         if !self.auto_convert_period_to_dari || !text.ends_with('.') {
             return text.to_string();
@@ -1223,7 +1206,9 @@ impl BornoEngine {
         if preceded_by_digit {
             return text.to_string();
         }
-        if chars.len() > 1 && matches!(chars[chars.len() - 2], '\u{0964}' | '\u{0965}') {
+        if text.ends_with("...")
+            || (chars.len() > 1 && matches!(chars[chars.len() - 2], '\u{0964}' | '\u{0965}' | '.'))
+        {
             return text.to_string();
         }
         let mut result: String = chars[..chars.len() - 1].iter().collect();
@@ -1231,35 +1216,38 @@ impl BornoEngine {
         result
     }
 
-    /// Internal commit logic for active composition.
-    fn commit_active(&mut self) -> ProcessResult {
-        let mut text = if let Some(idx) = self.state.selected_candidate_index {
+    /// Selects the currently highlighted candidate if present, falling back to Slot 0 or preedit.
+    fn selected_or_preedit_text(&self) -> String {
+        if let Some(idx) = self.state.selected_candidate_index {
             if idx < self.state.candidates.len() {
-                self.state.candidates[idx].clone()
-            } else if !self.state.candidates.is_empty() {
-                self.state.candidates[0].clone()
-            } else {
-                self.state.preedit.clone()
+                return self.state.candidates[idx].clone();
             }
-        } else if !self.state.candidates.is_empty() {
+        }
+        if !self.state.candidates.is_empty() {
             self.state.candidates[0].clone()
         } else {
             self.state.preedit.clone()
-        };
+        }
+    }
 
+    /// Applies Phonetic-only auto-dari conversion (when enabled), normalizes to NFC,
+    /// updates `last_committed_char`, and returns the resulting committed text.
+    fn finalize_commit_text(&mut self, mut text: String) -> Option<String> {
         if self.state.mode == InputMode::Phonetic && self.auto_convert_period_to_dari {
             text = self.apply_auto_dari(&text);
         }
-
-        let committed = if text.is_empty() {
-            None
-        } else {
-            Some(unicode::normalize_nfc(&text))
-        };
-
-        if let Some(ref c) = committed {
-            self.last_committed_char = c.chars().last();
+        if text.is_empty() {
+            return None;
         }
+        let normalized = unicode::normalize_nfc(&text);
+        self.last_committed_char = normalized.chars().last();
+        Some(normalized)
+    }
+
+    /// Internal commit logic for active composition.
+    fn commit_active(&mut self) -> ProcessResult {
+        let text = self.selected_or_preedit_text();
+        let committed = self.finalize_commit_text(text);
 
         self.clear_composition();
         ProcessResult {

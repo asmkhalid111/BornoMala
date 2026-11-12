@@ -127,12 +127,24 @@ impl Tokenizer {
 
             // Dari / Punctuation:
             // "...." -> Double Dari U+0965
+            // "..."  -> Literal ellipsis "..."
             // ".."   -> Dari U+0964
             // "||"   -> Double Dari U+0965
             // "|"    -> Dari U+0964
             if rem.starts_with("....") {
                 output.push('\u{0965}'); // ॥
                 i += 4;
+                last_kind = LastTokenKind::Other;
+                let end_codepoints = output.chars().count();
+                spans.push(TokenSpan {
+                    source_range: start_byte..i,
+                    target_range: start_codepoints..end_codepoints,
+                });
+                continue;
+            }
+            if rem.starts_with("...") {
+                output.push_str("...");
+                i += 3;
                 last_kind = LastTokenKind::Other;
                 let end_codepoints = output.chars().count();
                 spans.push(TokenSpan {

@@ -340,6 +340,7 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
             }
 
             // Main-row pure digits 1..9 (guard against Shift, AltGr, Ctrl, Alt, Super)
+            // Require at least two selectable candidates so single-candidate numeric input is not hijacked.
             if (sym >= FcitxKey_1 && sym <= FcitxKey_9) {
                 auto states = keyEvent.rawKey().states();
                 if (!states.test(fcitx::KeyState::Shift) &&
@@ -348,7 +349,8 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
                     !states.test(fcitx::KeyState::Alt) &&
                     !states.test(fcitx::KeyState::Super)) {
                     size_t cand_idx = static_cast<size_t>(sym - FcitxKey_1);
-                    if (cand_idx < prop->candidatesCount()) {
+                    size_t cand_count = prop->candidatesCount();
+                    if (cand_count > 1 && cand_idx < cand_count) {
                         BornoEventC ev{};
                         ev.event_type = BORNO_EVENT_SELECT_CANDIDATE;
                         ev.index_payload = cand_idx;

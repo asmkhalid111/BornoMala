@@ -314,10 +314,10 @@ export const SandboxTypingArea: React.FC<SandboxTypingAreaProps> = ({
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // 1-9 direct selection when candidates are available during composition
+    // 1-9 direct selection only when multiple selectable candidates exist during composition
     if (
       engineState.is_composing &&
-      engineState.candidates.length > 0 &&
+      engineState.candidates.length > 1 &&
       /^[1-9]$/.test(e.key)
     ) {
       const idx = parseInt(e.key, 10) - 1;

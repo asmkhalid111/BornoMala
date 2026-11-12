@@ -351,6 +351,7 @@ export const VirtualKeyboard: React.FC<VirtualKeyboardProps> = ({
             <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Loading layout...</span>
           )}
           <span
+            className="no-select"
             onClick={onToggleShift}
             style={{
               fontSize: "11px",
@@ -367,6 +368,7 @@ export const VirtualKeyboard: React.FC<VirtualKeyboardProps> = ({
             Shift: {shiftActive ? "ON" : "OFF"}
           </span>
           <span
+            className="no-select"
             onClick={onToggleAltGr}
             style={{
               fontSize: "11px",

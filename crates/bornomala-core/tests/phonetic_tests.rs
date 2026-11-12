@@ -618,9 +618,9 @@ fn test_gate_01_phonetic_period_sequence_matrix() {
     let r2 = engine.process_event(EngineEvent::InputChar('.'));
     assert_eq!(r2.state.preedit, "\u{0964}");
 
-    // 3 periods: "..." -> "।."
+    // 3 periods: "..." -> literal ellipsis "..."
     let r3 = engine.process_event(EngineEvent::InputChar('.'));
-    assert_eq!(r3.state.preedit, "\u{0964}.");
+    assert_eq!(r3.state.preedit, "...");
 
     // 4 periods: "...." -> "॥" (U+0965)
     let r4 = engine.process_event(EngineEvent::InputChar('.'));
@@ -643,9 +643,9 @@ fn test_gate_01_phonetic_period_sequence_matrix() {
     let b2 = engine.process_event(EngineEvent::Backspace);
     assert_eq!(b2.state.preedit, "\u{0965}");
 
-    // Backspace from 4 -> 3: "।."
+    // Backspace from 4 -> 3: "..." (literal ellipsis)
     let b3 = engine.process_event(EngineEvent::Backspace);
-    assert_eq!(b3.state.preedit, "\u{0964}.");
+    assert_eq!(b3.state.preedit, "...");
 
     // Backspace from 3 -> 2: "।"
     let b4 = engine.process_event(EngineEvent::Backspace);
@@ -774,5 +774,335 @@ fn test_gate_04_ambiguity_nasal_bornomala_and_negative_cases() {
     }
     let state_kor = engine.state();
     assert!(!state_kor.candidates.contains(&"কৰ্ণেল".to_string()));
+}
+
+#[test]
+fn test_auto_dari_phonetic_candidate_selection_and_mode_switch_consistency() {
+    use bornomala_core::layout::{FixedLayoutId, Modifiers, PhysicalKey};
+    use bornomala_core::InputMode;
+
+    let mut engine = BornoEngine::new();
+    engine.set_auto_convert_period_to_dari(true);
+
+    // 1. Enabled: "ami." committed via SelectCandidate(0) converts trailing '.' -> '।'
+    for ch in "ami.".chars() {
+        engine.process_event(EngineEvent::InputChar(ch));
+    }
+    assert_eq!(engine.state().preedit, "আমি.");
+    let r_sel = engine.process_event(EngineEvent::SelectCandidate(0));
+    assert!(r_sel.handled);
+    assert_eq!(r_sel.committed_text, Some("আমি।".to_string()));
+    assert!(!r_sel.state.is_composing);
+    assert_eq!(r_sel.state.preedit, "");
+
+    // 2. Enabled: last_committed_char updated by SelectCandidate preserves digit decimal safeguard
+    engine.process_event(EngineEvent::InputChar('3'));
+    let r_digit = engine.process_event(EngineEvent::SelectCandidate(0));
+    assert_eq!(r_digit.committed_text, Some("3".to_string()));
+    engine.process_event(EngineEvent::InputChar('.'));
+    let r_after_digit = engine.process_event(EngineEvent::Commit);
+    assert_eq!(r_after_digit.committed_text, Some(".".to_string()));
+
+    // 3. Enabled: domain safeguard preserved on SelectCandidate(0)
+    engine.reset();
+    for ch in "borno.org".chars() {
+        engine.process_event(EngineEvent::InputChar(ch));
+    }
+    let r_domain = engine.process_event(EngineEvent::SelectCandidate(0));
+    assert_eq!(r_domain.committed_text, Some("বর্ন.অর্গ".to_string()));
+
+    // 4. Enabled: numeric decimal preserved on SelectCandidate(0)
+    engine.reset();
+    for ch in "3.14".chars() {
+        engine.process_event(EngineEvent::InputChar(ch));
+    }
+    let r_decimal = engine.process_event(EngineEvent::SelectCandidate(0));
+    assert_eq!(r_decimal.committed_text, Some("3.14".to_string()));
+
+    // 5. Enabled: mode switch auto-commit preserves trailing '.' -> '।' conversion
+    engine.reset();
+    for ch in "ami.".chars() {
+        engine.process_event(EngineEvent::InputChar(ch));
+    }
+    let r_switch = engine.process_event(EngineEvent::SwitchMode(InputMode::EnglishPassthrough));
+    assert!(r_switch.handled);
+    assert_eq!(r_switch.committed_text, Some("আমি।".to_string()));
+
+    // 6. Disabled: SelectCandidate(0) retains literal ASCII period
+    let mut engine_disabled = BornoEngine::new();
+    engine_disabled.set_auto_convert_period_to_dari(false);
+    for ch in "ami.".chars() {
+        engine_disabled.process_event(EngineEvent::InputChar(ch));
+    }
+    let r_sel_disabled = engine_disabled.process_event(EngineEvent::SelectCandidate(0));
+    assert!(r_sel_disabled.handled);
+    assert_eq!(r_sel_disabled.committed_text, Some("আমি.".to_string()));
+
+    // 7. M9 Fixed Layout Isolation preserved: National and Bijoy unshifted '.' remain literal '.',
+    // while Probhat physical key table retains native '।' regardless of setting.
+    for (layout_id, expected_period) in [
+        (FixedLayoutId::National, "."),
+        (FixedLayoutId::Bijoy, "."),
+        (FixedLayoutId::Probhat, "।"),
+    ] {
+        let mut fixed = BornoEngine::new();
+        fixed.set_auto_convert_period_to_dari(true);
+        fixed.process_event(EngineEvent::SwitchMode(InputMode::Fixed(layout_id)));
+        fixed.process_event(EngineEvent::InputKey {
+            key: PhysicalKey::Period,
+            modifiers: Modifiers::default(),
+        });
+        let r_fixed = fixed.process_event(EngineEvent::Commit);
+        assert_eq!(
+            r_fixed.committed_text,
+            Some(expected_period.to_string()),
+            "Fixed layout {:?} must preserve its physical key mapping",
+            layout_id
+        );
+    }
+}
+
+fn type_phonetic_seq(engine: &mut BornoEngine, seq: &str) -> String {
+    engine.reset();
+    let mut preedit = String::new();
+    for ch in seq.chars() {
+        let res = engine.process_event(EngineEvent::InputChar(ch));
+        preedit = res.state.preedit;
+    }
+    preedit
+}
+
+#[test]
+fn test_wp_b_phonetic_single_period_and_ellipsis_parity() {
+    use bornomala_core::InputMode;
+
+    // A. Single-period baseline (Auto-Convert ON vs OFF across Space and Enter/Commit)
+    for (auto_dari, seq, commit_event, expected) in [
+        (true, "ami.", EngineEvent::InputChar(' '), "আমি। "),
+        (true, "ami.", EngineEvent::Commit, "আমি।"),
+        (true, "ami.", EngineEvent::InputChar('\n'), "আমি।"),
+        (false, "ami.", EngineEvent::InputChar(' '), "আমি. "),
+        (false, "ami.", EngineEvent::Commit, "আমি."),
+        (false, "ami.", EngineEvent::InputChar('\n'), "আমি."),
+    ] {
+        let mut engine = BornoEngine::new();
+        engine.set_auto_convert_period_to_dari(auto_dari);
+        assert_eq!(type_phonetic_seq(&mut engine, seq), "আমি.");
+        let res = engine.process_event(commit_event);
+        assert_eq!(res.committed_text.as_deref(), Some(expected));
+    }
+
+    // B & E. Ellipsis ("..." and "ami...") with Auto-Convert ON and OFF across all commit paths
+    for auto_dari in [true, false] {
+        for (input, expected_preedit) in [("...", "..."), ("ami...", "আমি...")] {
+            let mut engine = BornoEngine::new();
+            engine.set_auto_convert_period_to_dari(auto_dari);
+
+            // Space commit
+            assert_eq!(type_phonetic_seq(&mut engine, input), expected_preedit);
+            assert!(!expected_preedit.contains('\u{0964}'));
+            let r_space = engine.process_event(EngineEvent::InputChar(' '));
+            assert_eq!(r_space.committed_text.as_deref(), Some(format!("{expected_preedit} ").as_str()));
+
+            // Enter / Commit
+            assert_eq!(type_phonetic_seq(&mut engine, input), expected_preedit);
+            let r_commit = engine.process_event(EngineEvent::Commit);
+            assert_eq!(r_commit.committed_text.as_deref(), Some(expected_preedit));
+
+            assert_eq!(type_phonetic_seq(&mut engine, input), expected_preedit);
+            let r_enter = engine.process_event(EngineEvent::InputChar('\n'));
+            assert_eq!(r_enter.committed_text.as_deref(), Some(expected_preedit));
+
+            // Candidate selection commit
+            assert_eq!(type_phonetic_seq(&mut engine, input), expected_preedit);
+            let r_cand = engine.process_event(EngineEvent::SelectCandidate(0));
+            assert_eq!(r_cand.committed_text.as_deref(), Some(expected_preedit));
+
+            // Mode switch auto-commit
+            assert_eq!(type_phonetic_seq(&mut engine, input), expected_preedit);
+            let r_switch = engine.process_event(EngineEvent::SwitchMode(InputMode::EnglishPassthrough));
+            assert_eq!(r_switch.committed_text.as_deref(), Some(expected_preedit));
+        }
+    }
+}
+
+#[test]
+fn test_wp_b_tokenizer_ellipsis_spans_and_period_precedence() {
+    use bornomala_core::phonetic::Tokenizer;
+
+    // Triple-period consumes 3 bytes -> 3 scalars without corrupting surrounding Bangla spans
+    let (raw, spans) = Tokenizer::tokenize("ami...");
+    assert_eq!(raw, "আমি...");
+    assert_eq!(spans.len(), 4);
+    assert_eq!(spans[0].source_range, 0..1);
+    assert_eq!(spans[0].target_range, 0..1);
+    assert_eq!(spans[1].source_range, 1..2);
+    assert_eq!(spans[1].target_range, 1..2);
+    assert_eq!(spans[2].source_range, 2..3);
+    assert_eq!(spans[2].target_range, 2..3);
+    assert_eq!(spans[3].source_range, 3..6);
+    assert_eq!(spans[3].target_range, 3..6);
+
+    // C. Two-period (..), four-period (....), and longer sequence precedence (5..6)
+    for auto_dari in [true, false] {
+        let mut engine = BornoEngine::new();
+        engine.set_auto_convert_period_to_dari(auto_dari);
+
+        for (seq, expected_preedit, expected_commit, expected_space) in [
+            ("..", "\u{0964}", "\u{0964}", "\u{0964} "),
+            ("....", "\u{0965}", "\u{0965}", "\u{0965} "),
+            (".....", "\u{0965}.", "\u{0965}.", "\u{0965}. "),
+            ("......", "\u{0965}\u{0964}", "\u{0965}\u{0964}", "\u{0965}\u{0964} "),
+        ] {
+            assert_eq!(type_phonetic_seq(&mut engine, seq), expected_preedit);
+            assert_eq!(
+                engine.process_event(EngineEvent::Commit).committed_text.as_deref(),
+                Some(expected_commit)
+            );
+            assert_eq!(type_phonetic_seq(&mut engine, seq), expected_preedit);
+            assert_eq!(
+                engine.process_event(EngineEvent::InputChar(' ')).committed_text.as_deref(),
+                Some(expected_space)
+            );
+        }
+    }
+}
+
+#[test]
+fn test_wp_b_safeguards_and_fixed_layout_isolation() {
+    use bornomala_core::layout::{FixedLayoutId, Modifiers, PhysicalKey};
+    use bornomala_core::InputMode;
+
+    let mut engine = BornoEngine::new();
+    engine.set_auto_convert_period_to_dari(true);
+
+    // D. Decimal and domain safeguards + terminal period after digits
+    for seq in ["3.14", "৩.১৪", "3.", "৩."] {
+        assert_eq!(type_phonetic_seq(&mut engine, seq), seq);
+        let res = engine.process_event(EngineEvent::Commit);
+        assert_eq!(res.committed_text.as_deref(), Some(seq));
+    }
+
+    // Domain strings preserve literal period without converting to Dari
+    for domain in ["example.com", "borno.org"] {
+        let preedit = type_phonetic_seq(&mut engine, domain);
+        assert!(preedit.contains('.'));
+        assert!(!preedit.contains('\u{0964}'));
+        let committed = engine
+            .process_event(EngineEvent::Commit)
+            .committed_text
+            .expect("domain commit");
+        assert!(committed.contains('.'));
+        assert!(!committed.contains('\u{0964}'));
+    }
+
+    // Standalone period after previously committed digit stays literal '.'
+    engine.reset();
+    engine.process_event(EngineEvent::InputChar('3'));
+    assert_eq!(engine.process_event(EngineEvent::Commit).committed_text.as_deref(), Some("3"));
+    engine.process_event(EngineEvent::InputChar('.'));
+    assert_eq!(engine.process_event(EngineEvent::Commit).committed_text.as_deref(), Some("."));
+
+    // F. Fixed-layout isolation for multi-period sequences (must not use Phonetic tokenizer or auto-dari)
+    for (layout_id, expected_triple) in [
+        (FixedLayoutId::National, "..."),
+        (FixedLayoutId::Bijoy, "..."),
+        (FixedLayoutId::Probhat, "\u{0964}\u{0964}\u{0964}"),
+    ] {
+        let mut fixed = BornoEngine::new();
+        fixed.set_auto_convert_period_to_dari(true);
+        fixed.process_event(EngineEvent::SwitchMode(InputMode::Fixed(layout_id)));
+        for _ in 0..3 {
+            fixed.process_event(EngineEvent::InputKey {
+                key: PhysicalKey::Period,
+                modifiers: Modifiers::default(),
+            });
+        }
+        let committed = fixed.process_event(EngineEvent::Commit).committed_text;
+        assert_eq!(committed.as_deref(), Some(expected_triple));
+    }
+}
+
+#[test]
+fn test_wp_c_phonetic_numeric_sequences_and_single_candidate_counts() {
+    let mut engine = BornoEngine::new();
+
+    // Pure numeric InputChar sequences produce a single literal candidate and preserve every digit.
+    for (seq, expected) in [("1", "1"), ("11", "11"), ("123", "123"), ("3.14", "3.14")] {
+        engine.reset();
+        for ch in seq.chars() {
+            let res = engine.process_event(EngineEvent::InputChar(ch));
+            assert!(res.handled);
+            assert_eq!(res.state.candidates.len(), 1);
+        }
+        assert_eq!(engine.state().preedit, expected);
+        assert_eq!(engine.state().candidates, vec![expected.to_string()]);
+        let committed = engine.process_event(EngineEvent::Commit).committed_text;
+        assert_eq!(committed.as_deref(), Some(expected));
+    }
+
+    // Digits following Bengali text (within the same composition and after commit).
+    assert_eq!(type_phonetic_seq(&mut engine, "bangla2026"), "বাংলা2026");
+    assert_eq!(engine.state().candidates, vec!["বাংলা2026".to_string()]);
+    assert_eq!(
+        engine.process_event(EngineEvent::Commit).committed_text.as_deref(),
+        Some("বাংলা2026")
+    );
+
+    assert_eq!(type_phonetic_seq(&mut engine, "bangla"), "বাংলা");
+    assert_eq!(
+        engine.process_event(EngineEvent::Commit).committed_text.as_deref(),
+        Some("বাংলা")
+    );
+    for ch in "2026".chars() {
+        engine.process_event(EngineEvent::InputChar(ch));
+    }
+    assert_eq!(engine.state().preedit, "2026");
+    assert_eq!(engine.state().candidates, vec!["2026".to_string()]);
+
+    // Digits before terminal punctuation (e.g. "3.") remain literal with Auto-Convert ON.
+    engine.set_auto_convert_period_to_dari(true);
+    assert_eq!(type_phonetic_seq(&mut engine, "3."), "3.");
+    assert_eq!(engine.state().candidates, vec!["3.".to_string()]);
+    assert_eq!(
+        engine.process_event(EngineEvent::Commit).committed_text.as_deref(),
+        Some("3.")
+    );
+}
+
+#[test]
+fn test_wp_c_candidate_selection_and_out_of_range_digit_passthrough() {
+    let mut engine = BornoEngine::new();
+
+    // Confirm "ami" produces multiple candidates (> 1) under default configuration.
+    assert_eq!(type_phonetic_seq(&mut engine, "ami"), "আমি");
+    let candidates = engine.state().candidates.clone();
+    assert!(
+        candidates.len() >= 2,
+        "Expected 'ami' to provide multiple candidates, got {:?}",
+        candidates
+    );
+    assert_eq!(candidates[0], "আমি");
+
+    // Digit '1' -> SelectCandidate(0)
+    let r_sel0 = engine.process_event(EngineEvent::SelectCandidate(0));
+    assert!(r_sel0.handled);
+    assert_eq!(r_sel0.committed_text.as_deref(), Some(candidates[0].as_str()));
+
+    // Digit '2' -> SelectCandidate(1)
+    assert_eq!(type_phonetic_seq(&mut engine, "ami"), "আমি");
+    let expected_cand1 = engine.state().candidates[1].clone();
+    let r_sel1 = engine.process_event(EngineEvent::SelectCandidate(1));
+    assert!(r_sel1.handled);
+    assert_eq!(r_sel1.committed_text.as_deref(), Some(expected_cand1.as_str()));
+
+    // Digit beyond actual candidate count (since display limit <= 5, '9' is strictly out of bounds)
+    // passes through as ordinary InputChar instead of selecting a candidate.
+    assert_eq!(type_phonetic_seq(&mut engine, "ami"), "আমি");
+    assert!(engine.state().candidates.len() < 9);
+    let r_digit9 = engine.process_event(EngineEvent::InputChar('9'));
+    assert!(r_digit9.handled);
+    assert_eq!(r_digit9.committed_text, None);
+    assert_eq!(r_digit9.state.preedit, "আমি9");
 }
 

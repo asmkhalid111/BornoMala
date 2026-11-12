@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   BornoConfig,
   PersistenceStatus,
@@ -21,7 +22,74 @@ interface SettingsDrawerProps {
   onImport?: (jsonOrPath: string) => Promise<BornoConfig>;
 }
 
-type SettingsTab = "typing" | "appearance" | "shortcuts" | "backup";
+type SettingsTab =
+  | "typing"
+  | "appearance"
+  | "shortcuts"
+  | "backup"
+  | "about";
+
+const DEFAULT_FORM_CONFIG: BornoConfig = {
+  schema_version: "1.2.0",
+  default_startup_mode: "Phonetic",
+  preferred_fixed_layout: "National",
+  candidate_display_limit: 5,
+  auto_commit_on_mode_switch: true,
+  enable_dictionary_assistance: true,
+  enable_word_completion: true,
+  max_dictionary_suggestions: 3,
+  auto_convert_period_to_dari: false,
+  // Authoritative schema default from crates/bornomala-core/src/config.rs
+  candidate_orientation: "vertical",
+  candidate_font_size: 14,
+  active_theme: "dark-glass",
+  mode_toggle_key: "F12",
+};
+
+const EDITABLE_CONFIG_FIELDS: readonly (keyof BornoConfig)[] = [
+  "default_startup_mode",
+  "preferred_fixed_layout",
+  "candidate_display_limit",
+  "auto_commit_on_mode_switch",
+  "enable_dictionary_assistance",
+  "enable_word_completion",
+  "max_dictionary_suggestions",
+  "auto_convert_period_to_dari",
+  "candidate_orientation",
+  "candidate_font_size",
+  "active_theme",
+  "mode_toggle_key",
+];
+
+/** Normalizes a configuration object into a complete Settings draft using authoritative defaults. */
+function toFormData(config: BornoConfig): BornoConfig {
+  return {
+    schema_version: config.schema_version ?? DEFAULT_FORM_CONFIG.schema_version,
+    default_startup_mode: config.default_startup_mode ?? DEFAULT_FORM_CONFIG.default_startup_mode,
+    preferred_fixed_layout: config.preferred_fixed_layout ?? DEFAULT_FORM_CONFIG.preferred_fixed_layout,
+    candidate_display_limit: config.candidate_display_limit ?? DEFAULT_FORM_CONFIG.candidate_display_limit,
+    auto_commit_on_mode_switch: config.auto_commit_on_mode_switch ?? DEFAULT_FORM_CONFIG.auto_commit_on_mode_switch,
+    enable_dictionary_assistance: config.enable_dictionary_assistance ?? DEFAULT_FORM_CONFIG.enable_dictionary_assistance,
+    enable_word_completion: config.enable_word_completion ?? DEFAULT_FORM_CONFIG.enable_word_completion,
+    max_dictionary_suggestions: config.max_dictionary_suggestions ?? DEFAULT_FORM_CONFIG.max_dictionary_suggestions,
+    auto_convert_period_to_dari: config.auto_convert_period_to_dari ?? DEFAULT_FORM_CONFIG.auto_convert_period_to_dari,
+    candidate_orientation: config.candidate_orientation ?? DEFAULT_FORM_CONFIG.candidate_orientation,
+    candidate_font_size: config.candidate_font_size ?? DEFAULT_FORM_CONFIG.candidate_font_size,
+    active_theme: config.active_theme ?? DEFAULT_FORM_CONFIG.active_theme,
+    mode_toggle_key: config.mode_toggle_key ?? DEFAULT_FORM_CONFIG.mode_toggle_key,
+  };
+}
+
+function isPersistenceFailureResult(result: unknown): boolean {
+  if (result === false) {
+    return true;
+  }
+  if (typeof result === "object" && result !== null) {
+    const record = result as { success?: unknown; ok?: unknown };
+    return record.success === false || record.ok === false;
+  }
+  return false;
+}
 
 export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
   isOpen,
@@ -38,26 +106,26 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
   const [activeTab, setActiveTab] = useState<SettingsTab>("typing");
 
   // Form state (v1.2.0)
-  const [formData, setFormData] = useState<BornoConfig>({
-    schema_version: "1.2.0",
-    default_startup_mode: "Phonetic",
-    preferred_fixed_layout: "National",
-    candidate_display_limit: 5,
-    auto_commit_on_mode_switch: true,
-    enable_dictionary_assistance: true,
-    enable_word_completion: true,
-    max_dictionary_suggestions: 3,
-    auto_convert_period_to_dari: false,
-    candidate_orientation: "horizontal",
-    candidate_font_size: 14,
-    active_theme: "dark-glass",
-    mode_toggle_key: "F12",
-  });
+  const [formData, setFormData] = useState<BornoConfig>(() =>
+    config ? toFormData(config) : { ...DEFAULT_FORM_CONFIG }
+  );
 
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Isolated third-party notice state (completely independent of formData and isDirty)
+  const [notices, setNotices] = useState<string | null>(null);
+  const [isLoadingNotices, setIsLoadingNotices] = useState(false);
+  const [noticeError, setNoticeError] = useState<string | null>(null);
+  const [noticesUnavailableInBrowser, setNoticesUnavailableInBrowser] = useState(false);
+
+  const isMountedRef = useRef(true);
+  const noticeInFlightRef = useRef(false);
+  const saveInFlightRef = useRef(false);
+  const wasOpenRef = useRef(false);
+  const saveMsgTimerRef = useRef<number | null>(null);
 
   // Modals & prompts
   const [showDiscardPrompt, setShowDiscardPrompt] = useState(false);
@@ -70,42 +138,96 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
   const drawerRef = useRef<HTMLDivElement>(null);
   const triggerElementRef = useRef<HTMLElement | null>(null);
 
-  // Synchronize form with incoming config
+  const clearSaveMsgTimer = useCallback(() => {
+    if (saveMsgTimerRef.current !== null) {
+      window.clearTimeout(saveMsgTimerRef.current);
+      saveMsgTimerRef.current = null;
+    }
+  }, []);
+
+  const showTransientSuccess = useCallback(
+    (message: string, durationMs = 4000) => {
+      clearSaveMsgTimer();
+      setSaveSuccessMsg(message);
+      saveMsgTimerRef.current = window.setTimeout(() => {
+        saveMsgTimerRef.current = null;
+        if (isMountedRef.current) {
+          setSaveSuccessMsg(null);
+        }
+      }, durationMs);
+    },
+    [clearSaveMsgTimer]
+  );
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      clearSaveMsgTimer();
+    };
+  }, [clearSaveMsgTimer]);
+
+  const fetchNotices = useCallback(() => {
+    if (noticeInFlightRef.current) {
+      return;
+    }
+
+    if (!isTauri()) {
+      setNoticesUnavailableInBrowser(true);
+      setIsLoadingNotices(false);
+      setNoticeError(null);
+      return;
+    }
+
+    noticeInFlightRef.current = true;
+    setIsLoadingNotices(true);
+    setNoticeError(null);
+    setNoticesUnavailableInBrowser(false);
+
+    invoke<string>("get_third_party_notices")
+      .then((content) => {
+        if (isMountedRef.current) {
+          setNotices(content);
+          setNoticeError(null);
+          setIsLoadingNotices(false);
+        }
+      })
+      .catch((err) => {
+        if (isMountedRef.current) {
+          setNoticeError(err instanceof Error ? err.message : String(err));
+          setIsLoadingNotices(false);
+        }
+      })
+      .finally(() => {
+        noticeInFlightRef.current = false;
+        if (isMountedRef.current) {
+          setIsLoadingNotices(false);
+        }
+      });
+  }, []);
+
+  // Lazy-load third-party notices when About & Notices tab is active; allow in-flight requests to complete across tab switches
+  useEffect(() => {
+    if (activeTab !== "about") return;
+    if (notices !== null || noticeError !== null || noticesUnavailableInBrowser) {
+      return;
+    }
+    fetchNotices();
+  }, [activeTab, notices, noticeError, noticesUnavailableInBrowser, fetchNotices]);
+
+  // Synchronize form with incoming saved config updates
   useEffect(() => {
     if (config) {
-      setFormData({
-        schema_version: config.schema_version ?? "1.2.0",
-        default_startup_mode: config.default_startup_mode ?? "Phonetic",
-        preferred_fixed_layout: config.preferred_fixed_layout ?? "National",
-        candidate_display_limit: config.candidate_display_limit ?? 5,
-        auto_commit_on_mode_switch: config.auto_commit_on_mode_switch ?? true,
-        enable_dictionary_assistance: config.enable_dictionary_assistance ?? true,
-        enable_word_completion: config.enable_word_completion ?? true,
-        max_dictionary_suggestions: config.max_dictionary_suggestions ?? 3,
-        auto_convert_period_to_dari: config.auto_convert_period_to_dari ?? false,
-        candidate_orientation: config.candidate_orientation ?? "horizontal",
-        candidate_font_size: config.candidate_font_size ?? 14,
-        active_theme: config.active_theme ?? "dark-glass",
-        mode_toggle_key: config.mode_toggle_key ?? "F12",
-      });
+      setFormData(toFormData(config));
     }
   }, [config]);
 
-  // Compute dirty state
+  // Compute dirty state using identical normalization on both draft and saved baseline
+  const baselineConfig = config ? toFormData(config) : null;
+  const normalizedDraft = toFormData(formData);
   const isDirty = Boolean(
-    config &&
-      (formData.default_startup_mode !== config.default_startup_mode ||
-        formData.preferred_fixed_layout !== config.preferred_fixed_layout ||
-        formData.candidate_display_limit !== config.candidate_display_limit ||
-        formData.auto_commit_on_mode_switch !== config.auto_commit_on_mode_switch ||
-        formData.enable_dictionary_assistance !== config.enable_dictionary_assistance ||
-        formData.enable_word_completion !== config.enable_word_completion ||
-        formData.max_dictionary_suggestions !== config.max_dictionary_suggestions ||
-        formData.auto_convert_period_to_dari !== config.auto_convert_period_to_dari ||
-        formData.candidate_orientation !== config.candidate_orientation ||
-        formData.candidate_font_size !== config.candidate_font_size ||
-        formData.active_theme !== config.active_theme ||
-        formData.mode_toggle_key !== config.mode_toggle_key)
+    baselineConfig &&
+      EDITABLE_CONFIG_FIELDS.some((field) => normalizedDraft[field] !== baselineConfig[field])
   );
 
   // Check if persistence is locked
@@ -124,31 +246,55 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
       ? (persistenceStatus as any).payload?.version
       : null;
 
-  // Handle opening and focus setup
+  // Handle closed <-> open transitions, defensive draft re-sync on reopen, and focus setup/restoration
   useEffect(() => {
-    if (isOpen) {
-      triggerElementRef.current = document.activeElement as HTMLElement;
+    const wasOpen = wasOpenRef.current;
+    wasOpenRef.current = isOpen;
+
+    if (isOpen && !wasOpen) {
+      triggerElementRef.current = document.activeElement as HTMLElement | null;
+      if (config) {
+        setFormData(toFormData(config));
+      }
+      clearSaveMsgTimer();
       setSaveSuccessMsg(null);
       setErrorMessage(null);
       setShowDiscardPrompt(false);
       setShowResetConfirm(false);
-    } else {
+    } else if (!isOpen && wasOpen) {
+      clearSaveMsgTimer();
       if (triggerElementRef.current) {
         triggerElementRef.current.focus();
       } else {
         document.getElementById("settings-open-btn")?.focus();
       }
     }
-  }, [isOpen]);
+  }, [isOpen, config, clearSaveMsgTimer]);
 
   // Dismiss attempt with unsaved change protection
   const attemptClose = useCallback(() => {
+    if (isSaving || saveInFlightRef.current) {
+      return;
+    }
     if (isDirty) {
       setShowDiscardPrompt(true);
     } else {
       onClose();
     }
-  }, [isDirty, onClose]);
+  }, [isDirty, isSaving, onClose]);
+
+  const handleDiscardAndClose = useCallback(() => {
+    if (isSaving || saveInFlightRef.current) {
+      return;
+    }
+    clearSaveMsgTimer();
+    setFormData(config ? toFormData(config) : { ...DEFAULT_FORM_CONFIG });
+    setSaveSuccessMsg(null);
+    setErrorMessage(null);
+    setShowDiscardPrompt(false);
+    setShowResetConfirm(false);
+    onClose();
+  }, [config, isSaving, clearSaveMsgTimer, onClose]);
 
   // Keyboard navigation: Escape key & focus trapping
   useEffect(() => {
@@ -158,9 +304,13 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
       if (e.key === "Escape") {
         e.preventDefault();
         if (showResetConfirm) {
-          setShowResetConfirm(false);
+          if (!isResetting) {
+            setShowResetConfirm(false);
+          }
         } else if (showDiscardPrompt) {
-          setShowDiscardPrompt(false);
+          if (!isSaving && !saveInFlightRef.current) {
+            setShowDiscardPrompt(false);
+          }
         } else {
           attemptClose();
         }
@@ -193,44 +343,75 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, showResetConfirm, showDiscardPrompt, attemptClose]);
+  }, [isOpen, isResetting, isSaving, showResetConfirm, showDiscardPrompt, attemptClose]);
 
   if (!isOpen) return null;
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isLocked) return;
+  const persistSettings = async (): Promise<boolean> => {
+    if (isLocked || isSaving || saveInFlightRef.current) {
+      return false;
+    }
 
+    const payload = toFormData(formData);
+    saveInFlightRef.current = true;
     setIsSaving(true);
+    clearSaveMsgTimer();
     setErrorMessage(null);
     setSaveSuccessMsg(null);
 
     try {
-      await onSave(formData);
-      setSaveSuccessMsg("Settings saved successfully.");
-      setTimeout(() => {
-        setSaveSuccessMsg(null);
-      }, 4000);
+      const result: unknown = await onSave(payload);
+      if (isPersistenceFailureResult(result)) {
+        throw new Error("Configuration persistence reported an unsuccessful status.");
+      }
+      return true;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setErrorMessage(`Failed to save settings: ${msg}`);
+      if (isMountedRef.current) {
+        setErrorMessage(`Failed to save settings: ${msg}`);
+      }
+      return false;
     } finally {
-      setIsSaving(false);
+      saveInFlightRef.current = false;
+      if (isMountedRef.current) {
+        setIsSaving(false);
+      }
+    }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const saved = await persistSettings();
+    if (saved && isMountedRef.current) {
+      showTransientSuccess("Settings saved successfully.", 4000);
+    }
+  };
+
+  const handleSaveAndExit = async () => {
+    const saved = await persistSettings();
+    if (!isMountedRef.current) {
+      return;
+    }
+
+    setShowDiscardPrompt(false);
+    if (saved) {
+      setShowResetConfirm(false);
+      onClose();
+    } else {
+      drawerRef.current?.scrollTo?.({ top: 0, behavior: "smooth" });
     }
   };
 
   const handleConfirmReset = async () => {
     setIsResetting(true);
+    clearSaveMsgTimer();
     setErrorMessage(null);
     setSaveSuccessMsg(null);
 
     try {
       await onReset();
       setShowResetConfirm(false);
-      setSaveSuccessMsg("Configuration restored to factory defaults.");
-      setTimeout(() => {
-        setSaveSuccessMsg(null);
-      }, 4000);
+      showTransientSuccess("Configuration restored to factory defaults.", 4000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMessage(`Failed to reset configuration: ${msg}`);
@@ -242,7 +423,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
   const handleExportClick = async () => {
     try {
       setErrorMessage(null);
-      const jsonStr = onExport ? await onExport() : JSON.stringify(formData, null, 2);
+      const jsonStr = onExport ? await onExport() : JSON.stringify(normalizedDraft, null, 2);
       const blob = new Blob([jsonStr], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -252,8 +433,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      setSaveSuccessMsg("Settings exported successfully.");
-      setTimeout(() => setSaveSuccessMsg(null), 3000);
+      showTransientSuccess("Settings exported successfully.", 3000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMessage(`Export failed: ${msg}`);
@@ -272,13 +452,12 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
         setErrorMessage(null);
         if (onImport) {
           const imported = await onImport(content);
-          setFormData(imported);
+          setFormData(toFormData(imported));
         } else {
-          const parsed = JSON.parse(content);
-          setFormData(parsed);
+          const parsed = JSON.parse(content) as BornoConfig;
+          setFormData(toFormData(parsed));
         }
-        setSaveSuccessMsg("Configuration imported and verified successfully!");
-        setTimeout(() => setSaveSuccessMsg(null), 4000);
+        showTransientSuccess("Configuration imported and verified successfully!", 4000);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         setErrorMessage(`Import error: ${msg}`);
@@ -336,6 +515,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
         {/* Header */}
         <div
           style={{
+            flexShrink: 0,
             padding: "18px 24px",
             borderBottom: "1px solid var(--border-subtle)",
             display: "flex",
@@ -383,10 +563,12 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
           role="tablist"
           style={{
             display: "flex",
+            flexWrap: "wrap",
+            flexShrink: 0,
             borderBottom: "1px solid var(--border-subtle)",
             backgroundColor: "rgba(0, 0, 0, 0.2)",
-            padding: "4px 12px 0 12px",
-            gap: "4px",
+            padding: "8px 12px",
+            gap: "6px",
           }}
         >
           {[
@@ -394,26 +576,27 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
             { id: "appearance", label: "Appearance", icon: "🎨" },
             { id: "shortcuts", label: "Shortcuts", icon: "⚡" },
             { id: "backup", label: "Backup & Diagnostics", icon: "💾" },
+            { id: "about", label: "About & Notices", icon: "⚖️" },
           ].map((tab) => {
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
+                type="button"
                 role="tab"
                 aria-selected={isActive}
                 onClick={() => setActiveTab(tab.id as SettingsTab)}
                 style={{
-                  flex: 1,
-                  padding: "10px 8px",
+                  flex: "1 1 auto",
+                  minWidth: "fit-content",
+                  whiteSpace: "nowrap",
+                  padding: "8px 10px",
                   fontSize: "12px",
                   fontWeight: isActive ? "600" : "500",
                   color: isActive ? "var(--accent-cyan)" : "var(--text-secondary)",
                   backgroundColor: isActive ? "var(--bg-secondary)" : "transparent",
-                  borderTop: isActive ? "2px solid var(--accent-cyan)" : "2px solid transparent",
-                  borderLeft: "none",
-                  borderRight: "none",
-                  borderBottom: "none",
-                  borderRadius: "6px 6px 0 0",
+                  border: isActive ? "1px solid var(--accent-cyan)" : "1px solid transparent",
+                  borderRadius: "6px",
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
@@ -521,11 +704,11 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                     Auto-Convert Single Period to Dáñṛi (।)
                   </label>
                   <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px", lineHeight: "1.4" }}>
-                    When enabled, typing a single period at the end of a sentence converts to Bengali Dáñṛi (।) on space or Enter.
-                    Numeric values (<code>3.14</code>, <code>৩.১৪</code>) and domain strings (<code>borno.org</code>) are preserved as literal ASCII periods.
+                    Applies to <strong>Phonetic mode only</strong>. When enabled, a trailing single period at the end of a sentence converts to Bengali Dáñṛi (।) on commit (Space, Enter, candidate selection, or mode switch).
+                    Numeric values (<code>3.14</code>, <code>৩.১৪</code>) and domain strings (<code>borno.org</code>) are preserved as literal ASCII periods. It does not change the physical punctuation mappings of National, Probhat, or Bijoy layouts.
                   </p>
                   <div style={{ marginTop: "6px", fontSize: "11px", color: "var(--text-secondary)", backgroundColor: "rgba(0,0,0,0.2)", padding: "4px 8px", borderRadius: "4px" }}>
-                    <strong>Note:</strong> Double period (<code>..</code>) always produces Dáñṛi (।) and quadruple period (<code>....</code>) produces Double Dáñṛi (॥) regardless of this setting.
+                    <strong>Note:</strong> In Phonetic mode, double period (<code>..</code>) always produces Dáñṛi (।) and quadruple period (<code>....</code>) produces Double Dáñṛi (॥) regardless of this setting.
                   </div>
                 </div>
                 <button
@@ -1242,6 +1425,123 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
             </div>
           )}
 
+          {/* TAB 5: ABOUT & NOTICES */}
+          {activeTab === "about" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <h3 style={{ fontSize: "13px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--accent-cyan)" }}>
+                Third-Party Notices & Licensing Acknowledgements
+              </h3>
+
+              <p style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: "1.5" }}>
+                Authoritative licensing acknowledgements, dataset attributions, and complete third-party dependency license texts embedded offline.
+              </p>
+
+              {isLoadingNotices && (
+                <div
+                  role="status"
+                  style={{
+                    padding: "24px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border-subtle)",
+                    backgroundColor: "rgba(11, 15, 25, 0.7)",
+                    color: "var(--text-secondary)",
+                    fontSize: "12px",
+                    textAlign: "center",
+                  }}
+                >
+                  Loading embedded third-party notices...
+                </div>
+              )}
+
+              {!isLoadingNotices && noticesUnavailableInBrowser && (
+                <div
+                  role="note"
+                  style={{
+                    padding: "16px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border-subtle)",
+                    backgroundColor: "rgba(11, 15, 25, 0.7)",
+                    color: "var(--text-secondary)",
+                    fontSize: "12px",
+                    lineHeight: "1.5",
+                  }}
+                >
+                  Runtime Tauri IPC is unavailable in standalone browser preview mode. Launch the BornoMala desktop application window to inspect the compile-time embedded <code>THIRD-PARTY-NOTICES.md</code> document directly from the binary, or read the file at the repository root.
+                </div>
+              )}
+
+              {!isLoadingNotices && noticeError && (
+                <div
+                  role="alert"
+                  style={{
+                    padding: "16px",
+                    borderRadius: "8px",
+                    border: "1px solid rgba(244, 63, 94, 0.4)",
+                    backgroundColor: "rgba(244, 63, 94, 0.1)",
+                    color: "var(--accent-rose)",
+                    fontSize: "12px",
+                    lineHeight: "1.5",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "10px",
+                  }}
+                >
+                  <div>Failed to load third-party notices: {noticeError}</div>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNoticeError(null);
+                      }}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: "6px",
+                        backgroundColor: "rgba(244, 63, 94, 0.2)",
+                        color: "#ffffff",
+                        border: "1px solid rgba(244, 63, 94, 0.4)",
+                        fontSize: "11px",
+                        fontWeight: "600",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Retry Loading Notices
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!isLoadingNotices && !noticeError && !noticesUnavailableInBrowser && notices !== null && (
+                <div
+                  role="region"
+                  aria-label="Third-Party Notices and Licensing Acknowledgements"
+                  style={{
+                    borderRadius: "8px",
+                    border: "1px solid var(--border-subtle)",
+                    backgroundColor: "rgba(0, 0, 0, 0.3)",
+                  }}
+                >
+                  <pre
+                    style={{
+                      margin: 0,
+                      maxHeight: "480px",
+                      overflowY: "auto",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace)",
+                      fontSize: "12px",
+                      lineHeight: "1.5",
+                      userSelect: "text",
+                      padding: "16px",
+                      color: "var(--text-secondary)",
+                    }}
+                  >
+                    {notices}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Action Bar */}
           <div
             style={{
@@ -1298,6 +1598,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
             role="alertdialog"
             aria-modal="true"
             aria-labelledby="discard-title"
+            aria-describedby="discard-desc"
             style={{
               position: "absolute",
               top: 0,
@@ -1320,19 +1621,21 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                 padding: "24px",
                 borderRadius: "12px",
                 border: "1px solid var(--border-subtle)",
-                maxWidth: "360px",
+                maxWidth: "430px",
                 width: "100%",
               }}
             >
               <h4 id="discard-title" style={{ fontSize: "15px", fontWeight: "700", marginBottom: "8px", color: "var(--text-primary)" }}>
                 Unsaved Changes
               </h4>
-              <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "20px" }}>
-                You have unsaved changes in your settings. Discard edits and close?
+              <p id="discard-desc" style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "20px", lineHeight: "1.5" }}>
+                You have unsaved changes in your settings. Would you like to save before closing, discard your edits, or keep editing?
               </p>
-              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", flexWrap: "wrap" }}>
                 <button
+                  id="settings-keep-editing-btn"
                   type="button"
+                  disabled={isSaving}
                   onClick={() => setShowDiscardPrompt(false)}
                   style={{
                     padding: "8px 14px",
@@ -1341,17 +1644,17 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                     color: "var(--text-secondary)",
                     border: "1px solid var(--border-subtle)",
                     fontSize: "12px",
-                    cursor: "pointer",
+                    cursor: isSaving ? "not-allowed" : "pointer",
+                    opacity: isSaving ? 0.6 : 1,
                   }}
                 >
                   Keep Editing
                 </button>
                 <button
+                  id="settings-discard-close-btn"
                   type="button"
-                  onClick={() => {
-                    setShowDiscardPrompt(false);
-                    onClose();
-                  }}
+                  disabled={isSaving}
+                  onClick={handleDiscardAndClose}
                   style={{
                     padding: "8px 14px",
                     borderRadius: "6px",
@@ -1360,10 +1663,31 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                     border: "none",
                     fontWeight: "600",
                     fontSize: "12px",
-                    cursor: "pointer",
+                    cursor: isSaving ? "not-allowed" : "pointer",
+                    opacity: isSaving ? 0.6 : 1,
                   }}
                 >
                   Discard & Close
+                </button>
+                <button
+                  id="settings-save-exit-btn"
+                  type="button"
+                  disabled={isLocked || isSaving}
+                  aria-disabled={isLocked || isSaving}
+                  onClick={handleSaveAndExit}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: "6px",
+                    backgroundColor: !isLocked ? "var(--accent-cyan)" : "rgba(255, 255, 255, 0.08)",
+                    color: !isLocked ? "#ffffff" : "var(--text-muted)",
+                    border: "none",
+                    fontWeight: "600",
+                    fontSize: "12px",
+                    cursor: isLocked || isSaving ? "not-allowed" : "pointer",
+                    opacity: isSaving ? 0.8 : 1,
+                  }}
+                >
+                  {isSaving ? "Saving..." : "Save & Exit"}
                 </button>
               </div>
             </div>

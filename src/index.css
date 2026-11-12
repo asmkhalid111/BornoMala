@@ -118,6 +118,15 @@ body {
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.5;
   overflow-x: hidden;
+}
+
+button,
+[role="button"],
+[role="tab"],
+[role="switch"],
+input[type="range"],
+.no-select {
+  -webkit-user-select: none;
   user-select: none;
 }
 

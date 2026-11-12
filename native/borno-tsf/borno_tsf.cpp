@@ -640,10 +640,12 @@ public:
             ev.index_payload = candidateIndex;
             rc = borno_engine_process_event(m_pEngine, &ev, &result);
         } else if (action == EditAction::ProcessKey) {
-            // Check candidate digit selection (guarded by candidate count)
+            // Check candidate digit selection (requires at least two selectable candidates)
+            size_t candCount = m_pCandidateWindow ? m_pCandidateWindow->GetCandidateCount() : 0;
             size_t candIdx = 0;
             if (m_isComposing && m_pCandidateWindow && m_pCandidateWindow->IsVisible() &&
-                borno::IsCandidateSelectionDigit(wParam, m_pCandidateWindow->GetCandidateCount(), &candIdx))
+                candCount > 1 &&
+                borno::IsCandidateSelectionDigit(wParam, candCount, &candIdx))
             {
                 BornoEventC ev = {};
                 ev.event_type = BORNO_EVENT_SELECT_CANDIDATE;
