@@ -1,169 +1,153 @@
 #!/usr/bin/env python3
 """
-Layer 6B: Verification of Live Bangla Typing in Gedit (GNOME Text Editor under WSLg)
-Tests end-to-end typing via Fcitx 5 + BornoMala into a standard desktop text editor.
+Layer 6B: Isolated Real Desktop Application Integration Test (GNOME Gedit under X11/WSLg)
+
+Launches standalone Gedit inside an isolated private D-Bus + XDG temporary session,
+loads the freshly built WP1 bornomala.so, verifies Phonetic typing + file save, and
+cleans up only tracked owned child PIDs without modifying user gsettings or profiles.
 """
 
+import argparse
 import os
+import subprocess
 import sys
 import time
-import subprocess
+from pathlib import Path
 
-def get_visible_windows(env):
+TESTS_DIR = Path(__file__).resolve().parent
+SCRIPTS_DIR = TESTS_DIR.parent / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from fcitx_test_env import (  # noqa: E402
+    EXIT_FAILED,
+    EXIT_PASSED,
+    EXIT_UNAVAILABLE,
+    IsolatedFcitxSession,
+    PrerequisiteUnavailableError,
+    SessionFailureError,
+    terminate_owned_popen,
+)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Isolated BornoMala Fcitx 5 Gedit verification")
+    parser.add_argument("--build-dir", default=None, help="Directory containing built bornomala.so and .conf files")
+    parser.add_argument("--keep-temp", action="store_true", help="Keep temporary isolated session directory on exit")
+    return parser.parse_args()
+
+
+def get_visible_windows(env) -> set:
     try:
         out = subprocess.check_output(
             ["xdotool", "search", "--onlyvisible", ""],
             env=env,
-            stderr=subprocess.DEVNULL
+            stderr=subprocess.DEVNULL,
         ).decode().strip().split()
-        return [w for w in out if w.isdigit()]
+        return {w for w in out if w.isdigit()}
     except Exception:
-        return []
+        return set()
 
-def ensure_fcitx5():
-    profile_dir = os.path.expanduser("~/.config/fcitx5")
-    os.makedirs(profile_dir, exist_ok=True)
-    profile_path = os.path.join(profile_dir, "profile")
-    content = """[Groups/0]
-Name=Default
-Default Layout=us
-DefaultIM=bornomala
 
-[Groups/0/Items/0]
-Name=keyboard-us
-Layout=
+def run_gedit_suite(session: IsolatedFcitxSession) -> int:
+    loaded_so = session.verify_loaded_addon()
+    print(f"[Layer 6B] Verified loaded addon binary: {loaded_so}")
 
-[Groups/0/Items/1]
-Name=bornomala
-Layout=
+    assert session.root_dir is not None
+    test_file = session.root_dir / "gedit_output.txt"
 
-[GroupOrder]
-0=Default
-"""
-    with open(profile_path, "w", encoding="utf-8") as f:
-        f.write(content)
-
-    subprocess.run(["pkill", "-9", "fcitx5"], capture_output=True)
-    time.sleep(0.5)
-    print("[Layer 6B] Starting fcitx5 daemon with logging...")
-    env = os.environ.copy()
-    env["FCITX_ADDON_DIRS"] = "/usr/lib/x86_64-linux-gnu/fcitx5:" + os.path.expanduser("~/.local/lib/fcitx5")
-    log_file = open("/tmp/fcitx5_test.log", "w", encoding="utf-8")
-    subprocess.Popen(
-        ["fcitx5", "--verbose", "default=4", "--disable", "waylandim"],
-        env=env,
-        stdout=log_file,
-        stderr=log_file,
-        start_new_session=True
+    initial_windows = get_visible_windows(session.env)
+    proc = session.track_app(
+        subprocess.Popen(
+            ["gedit", "-s", str(test_file)],
+            env=session.env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
     )
-    time.sleep(2.0)
-
-def main():
-    print("[Layer 6B] Starting Gedit End-to-End Typing Test...")
-    ensure_fcitx5()
-
-    test_file = "/tmp/borno_test_gedit.txt"
-    if os.path.exists(test_file):
-        os.remove(test_file)
-
-    env = os.environ.copy()
-    uid = os.getuid()
-    bus_path = f"/run/user/{uid}/bus"
-    if os.path.exists(bus_path):
-        env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={bus_path}"
-
-    env["GTK_IM_MODULE"] = "fcitx"
-    env["QT_IM_MODULE"] = "fcitx"
-    env["XMODIFIERS"] = "@im=fcitx"
-    env["GDK_BACKEND"] = "x11"
-    env["DISPLAY"] = env.get("DISPLAY", ":0")
-    env["FCITX_ADDON_DIRS"] = "/usr/lib/x86_64-linux-gnu/fcitx5:" + os.path.expanduser("~/.local/lib/fcitx5")
-
-    # Ensure gsettings points to fcitx
-    try:
-        subprocess.run(["gsettings", "set", "org.gnome.desktop.interface", "gtk-im-module", "fcitx"], env=env, check=False)
-    except Exception:
-        pass
-
-    # Get baseline windows
-    initial_windows = set(get_visible_windows(env))
-
-    # 1. Launch Gedit standalone (-s)
-    print("[Layer 6B] Launching Gedit (standalone)...")
-    proc = subprocess.Popen(["gedit", "-s", test_file], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     win_id = None
-    for _ in range(20):
-        time.sleep(0.5)
-        current_windows = set(get_visible_windows(env))
-        new_windows = current_windows - initial_windows
-        if new_windows:
-            win_id = list(new_windows)[-1]
-            break
-
-    if not win_id:
-        print("[Layer 6B] Could not detect new Gedit window")
-        proc.kill()
-        sys.exit(1)
-
-    print(f"[Layer 6B] Found Gedit window ID: {win_id}")
-
     try:
-        # 2. Activate and focus window
-        subprocess.run(["xdotool", "windowactivate", "--sync", win_id], env=env, check=True)
-        subprocess.run(["xdotool", "windowfocus", "--sync", win_id], env=env, check=True)
-        time.sleep(1.0)
+        for _ in range(30):
+            if proc.poll() is not None:
+                print(f"RESULT=FAILED: gedit exited early with code {proc.returncode}", file=sys.stderr)
+                return EXIT_FAILED
+            time.sleep(0.35)
+            new_windows = get_visible_windows(session.env) - initial_windows
+            if new_windows:
+                win_id = sorted(new_windows)[-1]
+                break
 
-        # 3. Switch to BornoMala input method
-        subprocess.run(["fcitx5-remote", "-s", "bornomala"], env=env)
-        time.sleep(0.5)
-        subprocess.run(["fcitx5-remote", "-o"], env=env)
-        time.sleep(0.5)
+        if not win_id:
+            print("RESULT=FAILED: timed out detecting Gedit window", file=sys.stderr)
+            return EXIT_FAILED
 
-        im_name = subprocess.check_output(["fcitx5-remote", "-n"], env=env).decode().strip()
+        print(f"[Layer 6B] Found Gedit window ID: {win_id} (PID {proc.pid})")
+
+        subprocess.run(["xdotool", "windowactivate", "--sync", win_id], env=session.env, check=True)
+        subprocess.run(["xdotool", "windowfocus", "--sync", win_id], env=session.env, check=True)
+        time.sleep(0.8)
+
+        subprocess.run(["fcitx5-remote", "-s", "bornomala"], env=session.env, check=False)
+        subprocess.run(["fcitx5-remote", "-o"], env=session.env, check=False)
+        time.sleep(0.4)
+
+        im_name = subprocess.check_output(["fcitx5-remote", "-n"], env=session.env, text=True).strip()
         print(f"[Layer 6B] Active IM name: '{im_name}'")
 
-        # Click inside the editor text view to focus
-        subprocess.run(["xdotool", "windowactivate", "--sync", win_id], env=env, check=True)
-        subprocess.run(["xdotool", "mousemove", "--window", win_id, "200", "200", "click", "1"], env=env, check=True)
-        time.sleep(1.0)
+        subprocess.run(["xdotool", "mousemove", "--window", win_id, "200", "200", "click", "1"], env=session.env, check=True)
+        time.sleep(0.8)
 
-        # 4. Type "ami "
-        print("[Layer 6B] Injecting keys 'a', 'm', 'i', 'space' into Gedit...")
         for k in ["a", "m", "i", "space"]:
-            subprocess.run(["xdotool", "key", "--window", win_id, "--delay", "250", k], env=env, check=True)
-            time.sleep(0.4)
+            subprocess.run(["xdotool", "key", "--window", win_id, "--delay", "250", k], env=session.env, check=True)
+            time.sleep(0.35)
 
-        time.sleep(1.0)
-
-        # 5. Save via Ctrl+S
-        print("[Layer 6B] Saving document via Ctrl+S...")
-        subprocess.run(["xdotool", "key", "--window", win_id, "ctrl+s"], env=env, check=True)
-        time.sleep(2.0)
-
+        time.sleep(0.8)
+        subprocess.run(["xdotool", "key", "--window", win_id, "ctrl+s"], env=session.env, check=True)
+        time.sleep(1.5)
     finally:
-        # Terminate Gedit
-        proc.terminate()
-        try:
-            proc.wait(timeout=2.0)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        terminate_owned_popen(proc, expected_comms=("gedit",))
 
-    # 6. Verify saved file content
-    if not os.path.exists(test_file):
-        print(f"[Layer 6B] FAILED: Output file {test_file} was not written")
-        sys.exit(1)
+    if not test_file.is_file():
+        print(f"RESULT=FAILED: output file was not created at {test_file}", file=sys.stderr)
+        return EXIT_FAILED
 
-    with open(test_file, "r", encoding="utf-8") as f:
-        content = f.read()
+    content = test_file.read_text(encoding="utf-8")
+    print(f"[Layer 6B] Read content from Gedit: {content!r}")
 
-    print(f"[Layer 6B] Read content from Gedit: '{content}'")
+    leaks = session.scan_log_for_leaks()
+    if leaks:
+        print(f"RESULT=FAILED: runtime privacy leak in isolated log: {leaks[:3]}", file=sys.stderr)
+        return EXIT_FAILED
+
     if "আমি" in content:
-        print("[Layer 6B] SUCCESS: Real Gedit application successfully received and saved Bangla Unicode text 'আমি'!")
-        sys.exit(0)
-    else:
-        print(f"[Layer 6B] FAILED: Text in gedit was '{content}' (expected to contain 'আমি')")
-        sys.exit(1)
+        print("RESULT=PASSED")
+        return EXIT_PASSED
+
+    print(f"RESULT=FAILED: expected 'আমি' in Gedit output, got {content!r}", file=sys.stderr)
+    return EXIT_FAILED
+
+
+def main() -> int:
+    args = parse_args()
+    try:
+        with IsolatedFcitxSession(
+            build_dir=args.build_dir,
+            keep_temp=args.keep_temp,
+            require_xdotool=True,
+            require_gedit=True,
+            require_gtk3=False,
+        ) as session:
+            print(f"[Layer 6B] Isolated session dir: {session.root_dir}")
+            print(f"[Layer 6B] Owned fcitx5 PID: {session.fcitx_proc.pid}, dbus PID: {session.dbus_pid}")
+            return run_gedit_suite(session)
+    except PrerequisiteUnavailableError as exc:
+        print(f"RESULT=UNAVAILABLE: {exc}", file=sys.stderr)
+        return EXIT_UNAVAILABLE
+    except SessionFailureError as exc:
+        print(f"RESULT=FAILED: {exc}", file=sys.stderr)
+        return EXIT_FAILED
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
