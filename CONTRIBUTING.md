@@ -40,18 +40,21 @@ To ensure your time is respected and efforts are not wasted on unmergeable chang
      - **Zero Non-System Runtime Dependencies:** Keep the Rust core pure and native adapters thin.
      - **Sub-Millisecond Keystroke Latency:** Maintain zero-overhead state transactions.
      - **Strict Canonical Normalization:** Every emitted character must adhere to Unicode NFC and joiner safety.
-3. **Keep the Test Suite 100% Green:**
-   - Every pull request must compile cleanly, introduce automated tests for new functionality, and pass the existing 246 automated tests:
+3. **Keep the Test Suites Green:**
+   - Every pull request must compile cleanly, introduce automated tests for new functionality, and pass the core and backend regression suites:
      ```powershell
-     # Core Rust engine test suite (238 tests)
+     # Core Rust engine test suite (265 tests across 12 test targets)
      cargo test -p bornomala-core
 
-     # Desktop persistence suite (8 tests)
+     # Desktop persistence suite
      cargo run -p bornomala-desktop --bin persistence_suite
 
-     # Native Windows TSF prototype build & test harness
-     powershell -ExecutionPolicy Bypass -File "native/borno-tsf/build.ps1"
+     # Linux Fcitx 5 script & harness safety suite (16 tests, run on Linux / WSL2)
+     python3 -B -m unittest discover -s native/bornomala-fcitx5/tests -p 'test_scripts.py' -v
      ```
+   - **Linux Release Addon Verification:** See [`native/bornomala-fcitx5/README.md`](./native/bornomala-fcitx5/README.md) for Release PIC staticlib + CMake build, `ctest` (`4/4` plus negative `BORNO_TEST_CANARY=1` check), and safe user-mode installation/uninstallation instructions.
+   - **Hosted CI Status:** Windows and Linux GitHub Actions workflows are configured in [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) (`core-tests`, `frontend-build`, and `linux-fcitx5` for Ubuntu 24.04). Contributors should check the current Actions run for actual execution results; the current revision does not yet have a verified hosted Ubuntu 24.04 run, so local Windows and WSL2 test commands documented in [`native/bornomala-fcitx5/README.md`](./native/bornomala-fcitx5/README.md) and [`milestones/M8-revalidation-report.md`](./milestones/M8-revalidation-report.md) remain authoritative.
+   - **Windows Native TSF Build Warning (Not Required for Routine PRs):** Do **not** run `native/borno-tsf/build.ps1` routinely without reading [`native/borno-tsf/README.md`](./native/borno-tsf/README.md) first. At the end of every build, `build.ps1` automatically executes `test_harness.exe`, which calls `DllRegisterServer()` and `DllUnregisterServer()` for CLSID `{8A57F89C-3BF7-4B9E-A79B-86DF372E4F01}` and can alter or wipe existing Windows TSF COM registry state.
 
 ---
 

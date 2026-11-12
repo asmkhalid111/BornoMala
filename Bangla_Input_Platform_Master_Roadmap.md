@@ -1,3 +1,7 @@
+> **DEPRECATED HISTORICAL ARCHIVE (2026-10-17 Snapshot)**  
+> This duplicate roadmap is preserved strictly as a historical snapshot from `2026-10-17`. It is **not** the current source of truth.  
+> The active master roadmap is [`ROADMAP.md`](./ROADMAP.md). All future planning, milestone status tracking, and updates must use [`ROADMAP.md`](./ROADMAP.md).
+
 # Bangla Input Platform — Master Roadmap to v1.0.0
 
 > **Document role:** This is the project's master planning document and source of truth. Use it to create focused milestone instruction files (for example, `M0.md`, `M0.1.md`, `M1.md`) for Google Antigravity or another AI coding agent.

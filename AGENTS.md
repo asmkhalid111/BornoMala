@@ -29,15 +29,17 @@ This file defines non-negotiable operational rules for all AI coding agents work
    - `Deferred`
    - `Out of scope`
 3. **Honest Platform Support:**
-   - Windows is the primary development environment.
-   - Linux and macOS cannot be claimed as verified without real end-to-end execution on those systems.
-   - If a platform is unverified or blocked, explicitly report it as such.
+   - **Windows host verification:** Desktop sandbox (`bornomala-desktop`) builds/checks and native Windows TSF COM (`bornomala_tsf.dll`) host tests must be reported separately with exact verification scope; historical M7 COM tests do not replace post-change live host COM re-testing.
+   - **WSL2/WSLg Linux verification:** Tested WSL2/WSLg (`XWayland`, `--disable waylandim`) results cover only that environment and must not be generalized to native Linux desktop sessions, native Wayland (`waylandim`), untested toolkits, or other distributions.
+   - **Native Linux desktop verification:** Native X11 and native Wayland desktop sessions require direct execution on those environments before claiming support.
+   - **Hosted GitHub Actions verification:** Authoring a workflow (e.g. `.github/workflows/ci.yml`) or creating a triggered run is NOT verification of hosted CI; report hosted CI as unverified or blocked unless actual runner jobs started and passed.
+   - **macOS verification:** macOS remains unverified/deferred until built and executed end-to-end on real macOS hardware.
 
 ---
 
 ## 3. Architecture Boundaries & Dependencies
 
-1. **Shared Rust Core:** Reusable input and language logic resides in the Rust core (`crates/borno-core` or similar), decoupled from any specific GUI or OS adapter.
+1. **Shared Rust Core:** Reusable input and language logic resides in the Rust core (`crates/bornomala-core`), decoupled from any specific GUI or OS adapter.
 2. **Separation of Concerns:** Keep platform adapters thin and engine interfaces clean.
 3. **No Unjustified Dependencies:** Do not add external crates or npm packages without explaining the technical rationale.
 4. **Offline & Privacy by Default:** Never introduce mandatory cloud dependencies, network calls for standard typing, or background keystroke logging.

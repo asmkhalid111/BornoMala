@@ -1,9 +1,9 @@
-# Milestone M8 Revalidation Report — Linux Fcitx 5 Integration (`249bcbc` + WP1–WP3)
+# Milestone M8 Revalidation Report — Linux Fcitx 5 Integration (`de0149a`, WP1–WP3)
 
 > **Report Role:** Current-Revision Evidence Reconciliation (distinct from historical [`M8-completion-report.md`](M8-completion-report.md))  
 > **Date:** 2026-11-12  
-> **Git Baseline:** `master` at `249bcbcbe20a2ffaf86a739c2d23e585ecfe5099` (with uncommitted `M8-WP1`, `M8-WP2`, and `M8-WP3` working-tree changes)  
-> **Current M8 Status:** **Partially Verified — Release Build, Linux CI Workflow, Installer Hygiene & Isolated WSLg GTK3/Gedit Verified; Native Linux Desktop, Native Wayland & Live Pointer Candidate Click Unverified**
+> **Published Git Baseline:** `master` at `de0149af60e6aec767efea0f476043db85b31771` (`WP1`: `6bdb0ec7cc2c23eba6b1fc31e206c911a55e39ba`, `WP2`: `0e601aa5aef026145d3481040f4a2494bffb9172`, `WP3`: `de0149af60e6aec767efea0f476043db85b31771` above pre-M8 baseline `249bcbc`)  
+> **Current M8 Status:** **Partially Verified — Release Build, Linux CI Workflow, Installer Hygiene & Isolated WSLg GTK3/Gedit Verified Locally; Hosted CI Blocked (Account Billing), Native Linux Desktop, Native Wayland & Live Pointer Candidate Click Unverified**
 
 ---
 
@@ -25,21 +25,21 @@ The original [`milestones/M8-completion-report.md`](M8-completion-report.md) (`2
 | Environment | Observed Details | Role |
 |---|---|---|
 | **WSL2 Ubuntu 26.04.1 LTS** | Kernel `6.18.54.1-microsoft-standard-WSL2`, `rustc 1.99.1`, `cargo 1.99.1`, `cmake 4.2.3`, `g++ 15.2.0`, `fcitx5 5.1.19-1`, `libfcitx5core-dev 5.1.19-1`, `libfcitx5config-dev 5.1.19-1`, `libfcitx5utils-dev 5.1.19-1`, `fcitx5-modules-dev 5.1.19-1`, `gedit 48.1-9build1`, `python3-gi 3.56.2-1`, `Gtk 3.24.52`, `xdotool 1:3.20160805.1-5.1build1`, WSLg `DISPLAY=:0` (`--disable waylandim`) | Local Release build, CTest, E2E installer/uninstaller, and isolated WSLg runtime checks |
-| **GitHub Actions `ubuntu-24.04`** | Configured in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) (`linux-fcitx5` job; `libfcitx5core-dev` `5.1.7-1build3` in Ubuntu 24.04 `universe`) | Reproducible headless Linux CI workflow (**configured locally; remote run pending push/PR**) |
+| **GitHub Actions `ubuntu-24.04`** | Configured in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) (`linux-fcitx5` job; `libfcitx5core-dev` `5.1.7-1build3` in Ubuntu 24.04 `universe`) | Push-triggered run [`#11`](https://github.com/asmkhalid111/BornoMala/actions/runs/43225585458) (`de0149a`, `2026-11-12`): all 3 jobs **not started** due to GitHub account billing lock (**hosted CI unverified**) |
 
 ---
 
-## 3. Summary of Changes Since `249bcbc`
+## 3. Published M8 Work Packages (`249bcbc` → `de0149a`)
 
-- **`M8-WP1` (Adapter Correctness & Release Test Enforcement):**
+- **`M8-WP1` (`6bdb0ec7cc2c23eba6b1fc31e206c911a55e39ba`, `fix(linux): correct Fcitx adapter state and enforce Release tests`):**
   - Extracted shared [`adapter_helpers.h`](../native/bornomala-fcitx5/adapter_helpers.h) / [`adapter_helpers.cpp`](../native/bornomala-fcitx5/adapter_helpers.cpp), updated [`engine.h`](../native/bornomala-fcitx5/engine.h) and [`bornomala.cpp`](../native/bornomala-fcitx5/bornomala.cpp).
   - Fixed per-context Rust engine mode synchronization via explicit `BORNO_EVENT_SWITCH_MODE`, per-context `LinuxConfigMetadata`, `$XDG_CONFIG_HOME` resolution with relative-path rejection, `ShouldConsumeEngineResult()` (`rc == BORNO_OK && res.handled`) gating on all `filterAndAccept()` paths, and safe `TrackableObjectReference`-based `BornoCandidateWord::select()` context synchronization.
   - Added Release-active `BORNO_CHECK` ([`tests/test_check.h`](../native/bornomala-fcitx5/tests/test_check.h)) across C++ tests (`NDEBUG` preserved), designated negative canary [`tests/test_canary.cpp`](../native/bornomala-fcitx5/tests/test_canary.cpp) (`BORNO_TEST_CANARY=1`), and CMake installation of `data/bornomala.png` into `icons/hicolor/64x64/apps` ([`CMakeLists.txt`](../native/bornomala-fcitx5/CMakeLists.txt)).
-- **`M8-WP2` (Non-Destructive Packaging & Isolated GUI Harness):**
+- **`M8-WP2` (`0e601aa5aef026145d3481040f4a2494bffb9172`, `fix(linux): make Fcitx installation and test harness non-destructive`):**
   - Rewrote [`install.sh`](../native/bornomala-fcitx5/scripts/install.sh) and [`uninstall.sh`](../native/bornomala-fcitx5/scripts/uninstall.sh) sharing [`common.sh`](../native/bornomala-fcitx5/scripts/common.sh): XDG resolution, ELF validation, pre-write checks, atomic file installation, ownership manifest + allowlist validation, custom-icon preservation, dry-run/confirmation flags, zero `killall`/`pkill`, and default profile preservation (explicit opt-in `--register-profile` / `--reload-fcitx`).
-  - Added [`fcitx_test_env.py`](../native/bornomala-fcitx5/scripts/fcitx_test_env.py) and updated [`verify_gtk3.py`](../native/bornomala-fcitx5/tests/verify_gtk3.py), [`verify_gedit.py`](../native/bornomala-fcitx5/tests/verify_gedit.py), [`interactive_tester.py`](../native/bornomala-fcitx5/scripts/interactive_tester.py), [`launch_test_editor.sh`](../native/bornomala-fcitx5/scripts/launch_test_editor.sh), and the Windows `.bat` wrappers to use isolated temp `HOME`/`XDG_*` + private `dbus-daemon` + exact child-PID tracking, exit `77` (`RESULT=UNAVAILABLE`) when display/tools are absent, and omit `~/.config/fcitx5/profile` and `gsettings` mutations.
-  - Added [`tests/test_scripts.py`](../native/bornomala-fcitx5/tests/test_scripts.py) and [`native/bornomala-fcitx5/README.md`](../native/bornomala-fcitx5/README.md).
-- **`M8-WP3` (Linux CI & Documentation Reconciliation):**
+  - Added [`fcitx_test_env.py`](../native/bornomala-fcitx5/scripts/fcitx_test_env.py) and updated [`verify_gtk3.py`](../native/bornomala-fcitx5/tests/verify_gtk3.py), [`verify_gedit.py`](../native/bornomala-fcitx5/tests/verify_gedit.py), [`interactive_tester.py`](../native/bornomala-fcitx5/scripts/interactive_tester.py), [`launch_test_editor.sh`](../native/bornomala-fcitx5/scripts/launch_test_editor.sh) (adding procfs `(comm, starttime)` child-process identity checks, `INT`/`TERM` traps, and bounded `$SESSION_TMP` cleanup), and the Windows `.bat` wrappers (`Launch-Linux-Fcitx5-Test.bat`, `Launch-Linux-Gedit-Test.bat`) to isolate `HOME`/`XDG_*` + private `dbus-daemon`, exit `77` (`RESULT=UNAVAILABLE`) when display/tools are absent, and omit `~/.config/fcitx5/profile` and `gsettings` mutations.
+  - Added [`tests/test_scripts.py`](../native/bornomala-fcitx5/tests/test_scripts.py) (`16` tests total, including `4` `LaunchTestEditorCleanupTests` cases) and [`native/bornomala-fcitx5/README.md`](../native/bornomala-fcitx5/README.md).
+- **`M8-WP3` (`de0149af60e6aec767efea0f476043db85b31771`, `ci(linux): add Fcitx 5 verification and reconcile M8 evidence`):**
   - Added `linux-fcitx5` job on `ubuntu-24.04` to [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) alongside the unchanged `windows-latest` jobs.
   - Published this revalidation report and [`docs/platform-support.md`](../docs/platform-support.md); reconciled [`ROADMAP.md`](../ROADMAP.md) and [`milestones/M8.md`](M8.md).
 
@@ -58,7 +58,7 @@ The original [`milestones/M8-completion-report.md`](M8-completion-report.md) (`2
 | **Negative Canary CTest** (`BORNO_TEST_CANARY=1`) | **Verified Non-Zero Failure (`CANARY_EXIT_CODE=8`)** — `1..3` passed, `CanaryTest` failed with `[FAIL] Check failed: (false && "Intentional BORNO_TEST_CANARY=1 verification failure")`; subsequent normal CTest passed `4/4`. |
 | **Staged `DESTDIR` Installation** | **Passed** — installed `bornomala.so`, `addon/bornomala.conf`, `inputmethod/bornomala.conf`, `icons/hicolor/64x64/apps/bornomala.png` (`3,263` bytes), and `doc/bornomala/THIRD-PARTY-NOTICES.md` (`91,679` bytes). |
 | **Static Binary Privacy Scan** | **Passed (`0` matches)** on `bornomala.so` for `sym=0x`, `preedit=`, and `committed=`. |
-| **WP2 Script Safety Suite** (`test_scripts.py`) | **Passed (`12/12` in `4.539s`)** covering temp-HOME/XDG paths, error exits before writes, idempotency, profile/custom-icon preservation, manifest allowlist, PID-comm-checked teardown, and `DISPLAY=""` -> exit `77` (`RESULT=UNAVAILABLE`). |
+| **WP2 Script Safety Suite** (`test_scripts.py`) | **Passed (`16/16` in `4.967s` final WP2 publication)** — initial WP2/WP3 snapshot passed `12/12` (`4.539s`); after adding `4` `LaunchTestEditorCleanupTests` procfs identity and bounded temp-cleanup regression cases before publication, full suite passed `16/16` (`4.967s`) covering temp-HOME/XDG paths, error exits before writes, idempotency, profile/custom-icon preservation, manifest allowlist, PID-identity cleanup, and `DISPLAY=""` -> exit `77`. |
 | **Full Build-From-Source E2E Installer & Uninstaller (`$TMP_ROOT` fake HOME)** | **Passed** (`RUSTUP_HOME` & `CARGO_HOME` preserved for `rustup` toolchain) — built PIC staticlib + CMake addon, verified ELF `.so` & files, verified temp profile/unrelated sentinels byte-identical (`cmp -s`), verified 2nd run `[unchanged]`, verified `--dry-run`, confirmed `--yes` removal + empty `doc/bornomala` cleanup + 2nd `--yes` idempotency. |
 
 ### 4.2 Isolated WSLg Runtime Evidence (WSLg XWayland `--disable waylandim`)
@@ -77,7 +77,7 @@ All live runtime checks ran in private `dbus-daemon` + temporary `HOME`/`XDG_*` 
 ## 5. Explicitly Unverified & Remaining Gaps
 
 1. **Pointer Candidate Popup Mouse Selection Live Check:** Unverified live (`POPUP_WINS: []` / `POINTER_CLICK_DID_NOT_COMMIT` under WSLg XWayland; `xdotool` did not reliably reach a clickable Fcitx ClassicUI candidate popup window). Headless `SelectCandidateInContext` state cleanup is verified in CTest `EngineAdapterTest`, and `BornoCandidateWord::select()` compiles cleanly.
-2. **GitHub-Hosted `ubuntu-24.04` Runner Execution:** `.github/workflows/ci.yml` (`linux-fcitx5`) mirrors the locally tested steps, but remote GitHub Actions execution awaits push/PR authorization.
+2. **GitHub-Hosted `ubuntu-24.04` Execution (`Run #11`, Unverified / Account-Blocked):** Pushing `de0149af60e6aec767efea0f476043db85b31771` on `2026-11-12` triggered GitHub Actions run `#11` ([`runs/43225585458`](https://github.com/asmkhalid111/BornoMala/actions/runs/43225585458)). GitHub marked the run failed after ~5 seconds with annotations stating all three jobs were **not started because the GitHub account was locked due to a billing issue**. No `ubuntu-24.04` runner steps executed; hosted Linux CI remains unverified (external account/billing blocker, not a code-level test failure).
 3. **Native Linux Desktop Sessions:** Physical / non-WSL native Ubuntu desktop X11 and native Wayland (`waylandim`) sessions remain **unverified**.
 4. **Other Toolkits & Distros:** Qt5, Qt6, GTK4 live typing tests, interactive manual `interactive_tester.py` / `launch_test_editor.sh` desktop checks, non-Ubuntu/Debian distributions, IBus (`Out of Scope`), and macOS (`Unknown / Deferred`) remain unverified.
 
@@ -85,5 +85,5 @@ All live runtime checks ran in private `dbus-daemon` + temporary `HOME`/`XDG_*` 
 
 ## 6. M8 Acceptance Status Assessment
 
-M8 cannot yet be declared `100%` / `Fully Verified` across native Linux desktops for the current revision because live ClassicUI candidate-popup mouse clicking, native desktop Wayland/X11 sessions outside WSLg, Qt/GTK4 live typing, and remote `ubuntu-24.04` CI execution remain unverified. Current honest classification: **Partially Verified (Linux core, Release CMake/CTest, non-destructive installer/uninstaller, Ubuntu CI workflow ready, and isolated WSL2/WSLg GTK3/Gedit verified; native Linux desktop, Wayland, and pointer popup click unverified).**
+M8 cannot yet be declared `100%` / `Fully Verified` across native Linux desktops for `de0149a` because live ClassicUI candidate-popup mouse clicking, native desktop Wayland/X11 sessions outside WSLg, Qt/GTK4 live typing, and hosted `ubuntu-24.04` GitHub Actions execution (blocked before job start by billing lock on run [`#43225585458`](https://github.com/asmkhalid111/BornoMala/actions/runs/43225585458)) remain unverified. Current honest classification: **Partially Verified (Linux core, Release CMake/CTest, non-destructive installer/uninstaller, `16/16` script suite, local CI mirror, and isolated WSL2/WSLg GTK3/Gedit verified; hosted CI blocked pre-execution, and native Linux desktop, Wayland, and pointer popup click unverified).**
 

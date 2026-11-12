@@ -3,13 +3,13 @@
 > **Document ID:** DOC-UNICODE-001  
 > **Status:** Authoritative Specification (Milestone M2)  
 > **Target Standard:** Unicode Standard Version 16.0.0 (Script: Bengali / Bengali-Assamese, Block: U+0980–U+09FF)  
-> **Target Implementation:** `crates/borno-core/src/unicode.rs`
+> **Target Implementation:** `crates/bornomala-core/src/unicode.rs`
 
 ---
 
 ## 1. Scope and Architectural Role
 
-This document defines the formal Unicode foundation and composition rules for the shared Borno Rust core (`crates/borno-core`).
+This document defines the formal Unicode foundation and composition rules for the shared Borno Rust core (`crates/bornomala-core`).
 
 To prevent text corruption, search indexing failures, and layout-dependent rendering bugs, the Borno engine strictly separates five distinct architectural layers:
 

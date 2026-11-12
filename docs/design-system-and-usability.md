@@ -55,9 +55,9 @@ To prevent race conditions, file corruption, and write conflicts across processe
 Under WP-05, the configuration namespace has been unified across the desktop application and native adapters to a single canonical contract:
 
 1. **Canonical Application Path:**
-   - Path: `%APPDATA%\com.bornomala.desktop\config.json` (Windows), `~/.config/com.bornomala.desktop/config.json` (Linux)
+   - Path: `%APPDATA%\com.bornomala.desktop\config.json` (Windows), `${XDG_CONFIG_HOME:-$HOME/.config}/com.bornomala.desktop/config.json` (Linux; `XDG_CONFIG_HOME` is honored when set to a non-empty valid absolute path starting with `/`, otherwise falling back to `$HOME/.config`)
    - Owned by: `src-tauri/tauri.conf.json` (`"identifier": "com.bornomala.desktop"`).
-   - Matched by: Native Windows TSF (`native/borno-tsf/borno_tsf.cpp`) and Linux Fcitx 5 (`native/bornomala-fcitx5/bornomala.cpp`).
+   - Matched by: Native Windows TSF (`native/borno-tsf/borno_tsf.cpp`) and Linux Fcitx 5 (`native/bornomala-fcitx5/adapter_helpers.cpp` and `bornomala.cpp`).
 2. **Startup Discovery & Migration Contract (`startup_pipeline`):**
    - **Authoritative Canonical File:** If `com.bornomala.desktop\config.json` exists, it is evaluated directly. If valid, loaded; if corrupt/invalid, backed up and restored to defaults; if future SemVer, preserved byte-for-byte with persistence locked. Legacy files are never inspected if canonical file is present.
    - **Primary Legacy Sibling Migration:** If canonical configuration is absent and `com.bornomala.sandbox\config.json` exists, validated and upgraded to schema `1.2.0`, atomically saved to canonical destination, and an exclusive `.bak_migration` backup is created. Legacy source file remains intact and untouched on disk.
@@ -82,7 +82,7 @@ Based on interactive testing and ergonomic considerations, **`Horizontal`** orie
 | **Rust Core Schema** | `CandidateOrientation::Vertical` (`default_candidate_orientation()`) | `Verified in code` ([`config.rs:L99`](../crates/bornomala-core/src/config.rs#L99)) |
 | **Sandbox UI** | Dynamic flex layout (`column` vs `row`), defaults to `"horizontal"` | `Verified in code` ([`SandboxTypingArea.tsx:L288`](../src/components/SandboxTypingArea.tsx#L288)) |
 | **Windows TSF GDI** | Hardcoded vertical row height calculation; horizontal layout not implemented | `Verified in code` ([`candidate_window.cpp:L119`](../native/borno-tsf/candidate_window.cpp#L119)) |
-| **Linux Fcitx 5** | Hardcoded `fcitx::CandidateLayoutHint::Vertical` | `Verified in code` ([`bornomala.cpp:L434`](../native/bornomala-fcitx5/bornomala.cpp#L434)) |
+| **Linux Fcitx 5** | Hardcoded `fcitx::CandidateLayoutHint::Vertical` (`SyncUiFromResult`) | `Verified in code` ([`native/bornomala-fcitx5/bornomala.cpp`](../native/bornomala-fcitx5/bornomala.cpp)) |
 
 ### 3.3 Prerequisites for Changing Rust Core Default
 The Rust core schema default must **not** be changed merely to force superficial consistency. The following technical gates must be satisfied first:
