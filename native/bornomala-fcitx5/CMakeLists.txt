@@ -110,6 +110,7 @@ include_directories(
 
 # Shared module for Fcitx 5 addon
 add_library(bornomala MODULE
+    adapter_helpers.cpp
     bornomala.cpp
     key_mapper.cpp
 )
@@ -152,6 +153,7 @@ target_link_libraries(test_key_mapper PRIVATE
 add_test(NAME KeyMapperTest COMMAND test_key_mapper)
 
 add_executable(test_engine_adapter
+    adapter_helpers.cpp
     tests/test_engine_adapter.cpp
 )
 target_link_libraries(test_engine_adapter PRIVATE
@@ -162,6 +164,11 @@ target_link_libraries(test_engine_adapter PRIVATE
 )
 add_test(NAME EngineAdapterTest COMMAND test_engine_adapter)
 
+add_executable(test_canary
+    tests/test_canary.cpp
+)
+add_test(NAME CanaryTest COMMAND test_canary)
+
 # Configure metadata and input method files
 configure_file(bornomala-addon.conf.in bornomala.conf @ONLY)
 configure_file(bornomala.conf.in bornomala-im.conf @ONLY)
@@ -170,4 +177,5 @@ configure_file(bornomala.conf.in bornomala-im.conf @ONLY)
 install(TARGETS bornomala DESTINATION ${CMAKE_INSTALL_LIBDIR}/fcitx5)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/bornomala.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/fcitx5/addon)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/bornomala-im.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/fcitx5/inputmethod RENAME bornomala.conf)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/bornomala.png" DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/64x64/apps")
 install(FILES "${NOTICES_PATH}" DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/bornomala" RENAME "THIRD-PARTY-NOTICES.md")

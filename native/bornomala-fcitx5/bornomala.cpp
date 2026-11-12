@@ -1,68 +1,17 @@
 #include "engine.h"
 #include <cstring>
-#include <cstdlib>
-#include <fstream>
-#include <sstream>
-#include <sys/stat.h>
 #include <fcitx-utils/keysymgen.h>
 #include <fcitx-utils/log.h>
 
 namespace bornomala {
-
-static std::string GetLinuxConfigPath() {
-    const char* home = std::getenv("HOME");
-    if (home) {
-        return std::string(home) + "/.config/com.bornomala.desktop/config.json";
-    }
-    return "";
-}
 
 // Platform Boundary Note (Linux Fcitx 5):
 // Candidate window themes (Dark Glass, Light Glass, High Contrast), font sizes, and layout
 // orientations are strictly host-controlled by the desktop Fcitx 5 theme (e.g. Kimpanel,
 // Classic UI theme, or KDE Plasma theme) under the Freedesktop / XDG desktop specification.
 // The Rust core engine configuration (auto_convert_period_to_dari, linguistic ambiguity,
-// candidate display limits, and fixed layouts) is fully honored and synchronized via
-// borno_engine_configure_json.
-static void CheckAndReloadLinuxConfig(BornoEngineHandle* engine, LinuxConfigMetadata& meta) {
-    std::string path = GetLinuxConfigPath();
-    if (path.empty()) return;
-
-    struct stat st;
-    if (stat(path.c_str(), &st) != 0) return;
-
-    if (st.st_mtime == meta.lastMtime && st.st_size == meta.fileSize) {
-        return;
-    }
-
-    std::ifstream file(path);
-    if (!file.is_open()) return;
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string content = buffer.str();
-
-    uint32_t hash = 5381;
-    for (unsigned char c : content) {
-        hash = ((hash << 5) + hash) + c;
-    }
-
-    if (hash == meta.simpleHash) {
-        meta.lastMtime = st.st_mtime;
-        meta.fileSize = st.st_size;
-        return;
-    }
-
-    if (engine) {
-        int32_t rc = borno_engine_configure_json(engine, content.c_str());
-        if (rc == BORNO_OK) {
-            meta.lastMtime = st.st_mtime;
-            meta.fileSize = st.st_size;
-            meta.simpleHash = hash;
-            FCITX_INFO() << "[Borno] Synchronized engine configuration from " << path;
-        }
-    }
-}
+// candidate display limits, and fixed layouts) is honored and synchronized via
+// borno_engine_configure_json using XDG-resolved configuration paths.
 
 static const char* GetCandidateComment(int32_t kind) {
     switch (kind) {
@@ -75,34 +24,108 @@ static const char* GetCandidateComment(int32_t kind) {
     }
 }
 
+static void SyncUiFromResult(
+    fcitx::InputContext* ic,
+    BornoContextProperty* prop,
+    const fcitx::TrackableObjectReference<fcitx::InputContextPropertyFactory>& factoryRef,
+    const BornoProcessResultC& res
+) {
+    if (!ic || !prop) {
+        return;
+    }
+
+    FCITX_INFO() << "[Borno] syncContextAndUI: handled=" << res.handled
+                 << ", isComposing=" << res.state.is_composing
+                 << ", candidates=" << res.state.candidates_count;
+
+    if (res.committed_text && std::strlen(res.committed_text) > 0) {
+        ic->commitString(res.committed_text);
+    }
+
+    if (res.state.is_composing && res.state.preedit) {
+        size_t byte_cursor = CodepointToByteOffset(res.state.preedit, res.state.cursor_pos);
+
+        if (ic->capabilityFlags().test(fcitx::CapabilityFlag::Preedit)) {
+            fcitx::Text clientPreedit;
+            clientPreedit.append(res.state.preedit, fcitx::TextFormatFlag::Underline);
+            clientPreedit.setCursor(static_cast<int>(byte_cursor));
+            ic->inputPanel().setClientPreedit(clientPreedit);
+            ic->inputPanel().setPreedit(fcitx::Text());
+        } else {
+            fcitx::Text preedit;
+            preedit.append(res.state.preedit, fcitx::TextFormatFlag::Underline);
+            preedit.setCursor(static_cast<int>(byte_cursor));
+            ic->inputPanel().setPreedit(preedit);
+            ic->inputPanel().setClientPreedit(fcitx::Text());
+        }
+
+        if (prop->mode() == BORNO_MODE_PHONETIC && res.state.candidates_count > 0 && prop->engine()) {
+            auto candList = std::make_unique<fcitx::CommonCandidateList>();
+            candList->setLayoutHint(fcitx::CandidateLayoutHint::Vertical);
+            candList->setPageSize(9);
+            for (size_t i = 0; i < res.state.candidates_count; ++i) {
+                std::string text = res.state.candidates[i] ? res.state.candidates[i] : "";
+                int32_t kind = borno_engine_get_candidate_kind(prop->engine(), i);
+                candList->append(std::make_unique<BornoCandidateWord>(
+                    fcitx::Text(text),
+                    i,
+                    factoryRef,
+                    GetCandidateComment(kind)
+                ));
+            }
+            if (res.state.selected_candidate_index >= 0) {
+                candList->setGlobalCursorIndex(res.state.selected_candidate_index);
+            } else {
+                candList->setGlobalCursorIndex(-1);
+            }
+            ic->inputPanel().setCandidateList(std::move(candList));
+        } else {
+            ic->inputPanel().setCandidateList(nullptr);
+        }
+    } else {
+        ic->inputPanel().reset();
+    }
+
+    ic->updatePreedit();
+    ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
+}
+
 // ============================================================================
 // BornoCandidateWord Implementation
 // ============================================================================
 
-BornoCandidateWord::BornoCandidateWord(fcitx::Text text, size_t index, BornoEngineHandle* engine, std::string comment)
-    : fcitx::CandidateWord(std::move(text)), m_index(index), m_engine(engine) {
+BornoCandidateWord::BornoCandidateWord(
+    fcitx::Text text,
+    size_t index,
+    fcitx::TrackableObjectReference<fcitx::InputContextPropertyFactory> factoryRef,
+    std::string comment
+)
+    : fcitx::CandidateWord(std::move(text)),
+      m_index(index),
+      m_factoryRef(std::move(factoryRef)) {
     if (!comment.empty()) {
         setComment(fcitx::Text(std::move(comment)));
     }
 }
 
 void BornoCandidateWord::select(fcitx::InputContext* inputContext) const {
-    if (!inputContext || !m_engine) {
+    if (!inputContext) {
         return;
     }
-    BornoEventC ev{};
-    ev.event_type = BORNO_EVENT_SELECT_CANDIDATE;
-    ev.index_payload = m_index;
+    auto* baseFactory = m_factoryRef.get();
+    if (!baseFactory) {
+        return;
+    }
+    auto* prop = static_cast<BornoContextProperty*>(inputContext->property(baseFactory));
+    if (!prop || !prop->engine()) {
+        return;
+    }
+
     BornoProcessResultC res{};
-    int32_t rc = borno_engine_process_event(m_engine, &ev, &res);
-    if (rc == BORNO_OK && res.handled && res.committed_text) {
-        inputContext->commitString(res.committed_text);
+    if (SelectCandidateInContext(prop->state(), m_index, &res)) {
+        SyncUiFromResult(inputContext, prop, m_factoryRef, res);
     }
     borno_process_result_free_members(&res);
-
-    inputContext->inputPanel().reset();
-    inputContext->updatePreedit();
-    inputContext->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
 }
 
 // ============================================================================
@@ -110,21 +133,16 @@ void BornoCandidateWord::select(fcitx::InputContext* inputContext) const {
 // ============================================================================
 
 BornoContextProperty::BornoContextProperty(fcitx::InputContext* ic)
-    : m_ic(ic), m_engine(borno_engine_new()), m_mode(BORNO_MODE_PHONETIC),
-      m_isComposing(false), m_candidatesCount(0) {
+    : m_ic(ic) {
+    InitContextState(m_state);
 }
 
 BornoContextProperty::~BornoContextProperty() {
-    if (m_engine) {
-        borno_engine_free(m_engine);
-        m_engine = nullptr;
-    }
+    DestroyContextState(m_state);
 }
 
 void BornoContextProperty::syncFromState(const BornoStateC& state) {
-    m_isComposing = state.is_composing;
-    m_candidatesCount = state.candidates_count;
-    m_mode = state.mode;
+    SyncContextStateFromC(m_state, state);
 }
 
 // ============================================================================
@@ -135,7 +153,13 @@ BornoEngine::BornoEngine(fcitx::Instance* instance)
     : m_instance(instance),
       m_factory([this](fcitx::InputContext& ic) {
           auto* prop = new BornoContextProperty(&ic);
-          prop->setMode(m_globalMode);
+          if (prop->engine()) {
+              std::string resolvedPath;
+              if (CheckAndReloadLinuxConfig(prop->state(), &resolvedPath)) {
+                  FCITX_INFO() << "[Borno] Synchronized engine configuration from " << resolvedPath;
+              }
+              SyncContextEngineMode(prop->state(), m_globalMode);
+          }
           return prop;
       }),
       m_globalMode(BORNO_MODE_PHONETIC) {
@@ -193,29 +217,19 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
             return; // Explicit pass-through: modified shortcut reaches application unconsumed
         }
 
-        int32_t currentMode = prop->mode();
-        int32_t nextMode;
-        switch (currentMode) {
-            case BORNO_MODE_PHONETIC:       nextMode = BORNO_MODE_FIXED_NATIONAL; break;
-            case BORNO_MODE_FIXED_NATIONAL: nextMode = BORNO_MODE_FIXED_PROBHAT;  break;
-            case BORNO_MODE_FIXED_PROBHAT:  nextMode = BORNO_MODE_FIXED_BIJOY;    break;
-            case BORNO_MODE_FIXED_BIJOY:    nextMode = BORNO_MODE_PASSTHROUGH;     break;
-            case BORNO_MODE_PASSTHROUGH:    nextMode = BORNO_MODE_PHONETIC;       break;
-            default:                        nextMode = BORNO_MODE_PHONETIC;       break;
-        }
+        int32_t nextMode = NextCycleMode(prop->mode());
 
         BornoEventC ev{};
         ev.event_type = BORNO_EVENT_SWITCH_MODE;
         ev.mode_payload = nextMode;
         BornoProcessResultC res{};
         int32_t rc = borno_engine_process_event(prop->engine(), &ev, &res);
-        if (rc == BORNO_OK && res.handled) {
-            prop->setMode(nextMode);
-            m_globalMode = nextMode;
+        if (ShouldConsumeEngineResult(rc, res)) {
             syncContextAndUI(ic, prop, res);
+            m_globalMode = prop->mode();
+            keyEvent.filterAndAccept();
         }
         borno_process_result_free_members(&res);
-        keyEvent.filterAndAccept();
         return;
     }
 
@@ -232,11 +246,11 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
             ev.event_type = BORNO_EVENT_CANCEL;
             BornoProcessResultC res{};
             int32_t rc = borno_engine_process_event(prop->engine(), &ev, &res);
-            if (rc == BORNO_OK && res.handled) {
+            if (ShouldConsumeEngineResult(rc, res)) {
                 syncContextAndUI(ic, prop, res);
+                keyEvent.filterAndAccept();
             }
             borno_process_result_free_members(&res);
-            keyEvent.filterAndAccept();
             return;
         }
 
@@ -246,11 +260,11 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
             ev.event_type = BORNO_EVENT_COMMIT;
             BornoProcessResultC res{};
             int32_t rc = borno_engine_process_event(prop->engine(), &ev, &res);
-            if (rc == BORNO_OK && res.handled) {
+            if (ShouldConsumeEngineResult(rc, res)) {
                 syncContextAndUI(ic, prop, res);
+                keyEvent.filterAndAccept();
             }
             borno_process_result_free_members(&res);
-            keyEvent.filterAndAccept();
             return;
         }
 
@@ -266,11 +280,11 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
             } else {
                 rc = borno_engine_process_key(prop->engine(), BORNO_KEY_SPACE, 0, &res);
             }
-            if (rc == BORNO_OK && res.handled) {
+            if (ShouldConsumeEngineResult(rc, res)) {
                 syncContextAndUI(ic, prop, res);
+                keyEvent.filterAndAccept();
             }
             borno_process_result_free_members(&res);
-            keyEvent.filterAndAccept();
             return;
         }
 
@@ -280,11 +294,11 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
             ev.event_type = BORNO_EVENT_BACKSPACE;
             BornoProcessResultC res{};
             int32_t rc = borno_engine_process_event(prop->engine(), &ev, &res);
-            if (rc == BORNO_OK && res.handled) {
+            if (ShouldConsumeEngineResult(rc, res)) {
                 syncContextAndUI(ic, prop, res);
+                keyEvent.filterAndAccept();
             }
             borno_process_result_free_members(&res);
-            keyEvent.filterAndAccept();
             return;
         }
 
@@ -295,11 +309,11 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
                 ev.event_type = BORNO_EVENT_PREV_CANDIDATE;
                 BornoProcessResultC res{};
                 int32_t rc = borno_engine_process_event(prop->engine(), &ev, &res);
-                if (rc == BORNO_OK && res.handled) {
+                if (ShouldConsumeEngineResult(rc, res)) {
                     syncContextAndUI(ic, prop, res);
+                    keyEvent.filterAndAccept();
                 }
                 borno_process_result_free_members(&res);
-                keyEvent.filterAndAccept();
                 return;
             }
             if (sym == FcitxKey_Down) {
@@ -307,11 +321,11 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
                 ev.event_type = BORNO_EVENT_NEXT_CANDIDATE;
                 BornoProcessResultC res{};
                 int32_t rc = borno_engine_process_event(prop->engine(), &ev, &res);
-                if (rc == BORNO_OK && res.handled) {
+                if (ShouldConsumeEngineResult(rc, res)) {
                     syncContextAndUI(ic, prop, res);
+                    keyEvent.filterAndAccept();
                 }
                 borno_process_result_free_members(&res);
-                keyEvent.filterAndAccept();
                 return;
             }
             if (sym == FcitxKey_Left) {
@@ -319,11 +333,11 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
                 ev.event_type = BORNO_EVENT_MOVE_CURSOR_LEFT;
                 BornoProcessResultC res{};
                 int32_t rc = borno_engine_process_event(prop->engine(), &ev, &res);
-                if (rc == BORNO_OK && res.handled) {
+                if (ShouldConsumeEngineResult(rc, res)) {
                     syncContextAndUI(ic, prop, res);
+                    keyEvent.filterAndAccept();
                 }
                 borno_process_result_free_members(&res);
-                keyEvent.filterAndAccept();
                 return;
             }
             if (sym == FcitxKey_Right) {
@@ -331,11 +345,11 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
                 ev.event_type = BORNO_EVENT_MOVE_CURSOR_RIGHT;
                 BornoProcessResultC res{};
                 int32_t rc = borno_engine_process_event(prop->engine(), &ev, &res);
-                if (rc == BORNO_OK && res.handled) {
+                if (ShouldConsumeEngineResult(rc, res)) {
                     syncContextAndUI(ic, prop, res);
+                    keyEvent.filterAndAccept();
                 }
                 borno_process_result_free_members(&res);
-                keyEvent.filterAndAccept();
                 return;
             }
 
@@ -356,11 +370,11 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
                         ev.index_payload = cand_idx;
                         BornoProcessResultC res{};
                         int32_t rc = borno_engine_process_event(prop->engine(), &ev, &res);
-                        if (rc == BORNO_OK && res.handled) {
+                        if (ShouldConsumeEngineResult(rc, res)) {
                             syncContextAndUI(ic, prop, res);
+                            keyEvent.filterAndAccept();
                         }
                         borno_process_result_free_members(&res);
-                        keyEvent.filterAndAccept();
                         return;
                     }
                 }
@@ -377,7 +391,7 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
             ev.char_codepoint = ucs;
             BornoProcessResultC res{};
             int32_t rc = borno_engine_process_event(prop->engine(), &ev, &res);
-            if (rc == BORNO_OK && res.handled) {
+            if (ShouldConsumeEngineResult(rc, res)) {
                 syncContextAndUI(ic, prop, res);
                 keyEvent.filterAndAccept();
             }
@@ -391,7 +405,7 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
             uint32_t mods = ExtractBornoModifiers(keyEvent.rawKey().states());
             BornoProcessResultC res{};
             int32_t rc = borno_engine_process_key(prop->engine(), pkey, mods, &res);
-            if (rc == BORNO_OK && res.handled) {
+            if (ShouldConsumeEngineResult(rc, res)) {
                 syncContextAndUI(ic, prop, res);
                 keyEvent.filterAndAccept();
             }
@@ -402,74 +416,36 @@ void BornoEngine::keyEvent(const fcitx::InputMethodEntry& entry, fcitx::KeyEvent
 }
 
 void BornoEngine::syncContextAndUI(fcitx::InputContext* ic, BornoContextProperty* prop, const BornoProcessResultC& res) {
-    FCITX_INFO() << "[Borno] syncContextAndUI: handled=" << res.handled
-                 << ", isComposing=" << res.state.is_composing
-                 << ", candidates=" << res.state.candidates_count;
-    if (res.committed_text && std::strlen(res.committed_text) > 0) {
-        ic->commitString(res.committed_text);
-    }
-
     prop->syncFromState(res.state);
-
-    if (res.state.is_composing && res.state.preedit) {
-        size_t byte_cursor = CodepointToByteOffset(res.state.preedit, res.state.cursor_pos);
-
-        if (ic->capabilityFlags().test(fcitx::CapabilityFlag::Preedit)) {
-            fcitx::Text clientPreedit;
-            clientPreedit.append(res.state.preedit, fcitx::TextFormatFlag::Underline);
-            clientPreedit.setCursor(static_cast<int>(byte_cursor));
-            ic->inputPanel().setClientPreedit(clientPreedit);
-            ic->inputPanel().setPreedit(fcitx::Text());
-        } else {
-            fcitx::Text preedit;
-            preedit.append(res.state.preedit, fcitx::TextFormatFlag::Underline);
-            preedit.setCursor(static_cast<int>(byte_cursor));
-            ic->inputPanel().setPreedit(preedit);
-            ic->inputPanel().setClientPreedit(fcitx::Text());
-        }
-
-        if (prop->mode() == BORNO_MODE_PHONETIC && res.state.candidates_count > 0) {
-            auto candList = std::make_unique<fcitx::CommonCandidateList>();
-            candList->setLayoutHint(fcitx::CandidateLayoutHint::Vertical);
-            candList->setPageSize(9);
-            for (size_t i = 0; i < res.state.candidates_count; ++i) {
-                std::string text = res.state.candidates[i] ? res.state.candidates[i] : "";
-                int32_t kind = borno_engine_get_candidate_kind(prop->engine(), i);
-                candList->append(std::make_unique<BornoCandidateWord>(
-                    fcitx::Text(text),
-                    i,
-                    prop->engine(),
-                    GetCandidateComment(kind)
-                ));
-            }
-            if (res.state.selected_candidate_index >= 0) {
-                candList->setGlobalCursorIndex(res.state.selected_candidate_index);
-            } else {
-                candList->setGlobalCursorIndex(-1);
-            }
-            ic->inputPanel().setCandidateList(std::move(candList));
-        } else {
-            ic->inputPanel().setCandidateList(nullptr);
-        }
-    } else {
-        ic->inputPanel().reset();
-    }
-
-    ic->updatePreedit();
-    ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
+    SyncUiFromResult(ic, prop, m_factory.watch(), res);
 }
 
 void BornoEngine::activate(const fcitx::InputMethodEntry& entry, fcitx::InputContextEvent& event) {
     FCITX_UNUSED(entry);
     auto* ic = event.inputContext();
-    if (!ic) return;
+    if (!ic) {
+        return;
+    }
     auto* prop = ic->propertyFor(&m_factory);
-    if (prop) {
-        if (prop->engine()) {
-            CheckAndReloadLinuxConfig(prop->engine(), m_configMeta);
+    if (!prop || !prop->engine()) {
+        return;
+    }
+
+    std::string resolvedPath;
+    if (CheckAndReloadLinuxConfig(prop->state(), &resolvedPath)) {
+        FCITX_INFO() << "[Borno] Synchronized engine configuration from " << resolvedPath;
+    }
+
+    const bool wasComposing = prop->isComposing();
+    std::string committedText;
+    if (SyncContextEngineMode(prop->state(), m_globalMode, &committedText)) {
+        if (!committedText.empty()) {
+            ic->commitString(committedText);
         }
-        if (!prop->isComposing()) {
-            prop->setMode(m_globalMode);
+        if (!committedText.empty() || (wasComposing && !prop->isComposing())) {
+            ic->inputPanel().reset();
+            ic->updatePreedit();
+            ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
         }
     }
 }
@@ -483,12 +459,15 @@ void BornoEngine::reset(const fcitx::InputMethodEntry& entry, fcitx::InputContex
     FCITX_UNUSED(entry);
     FCITX_INFO() << "[Borno] reset called";
     auto* ic = event.inputContext();
-    if (!ic) return;
+    if (!ic) {
+        return;
+    }
     auto* prop = ic->propertyFor(&m_factory);
     if (prop && prop->engine()) {
         BornoStateC reset_state{};
-        borno_engine_reset(prop->engine(), &reset_state);
-        prop->syncFromState(reset_state);
+        if (borno_engine_reset(prop->engine(), &reset_state) == BORNO_OK) {
+            prop->syncFromState(reset_state);
+        }
         borno_state_free_members(&reset_state);
     }
     ic->inputPanel().reset();

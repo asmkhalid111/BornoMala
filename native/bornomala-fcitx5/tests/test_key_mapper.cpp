@@ -1,10 +1,10 @@
-#include <cassert>
 #include <iostream>
 #include <linux/input-event-codes.h>
 #include <fcitx-utils/key.h>
 #include <fcitx-utils/keysym.h>
 #include <fcitx-utils/keysymgen.h>
 #include "../key_mapper.h"
+#include "test_check.h"
 
 using namespace bornomala;
 
@@ -76,22 +76,22 @@ void TestPhysicalKeyMappings() {
         {KEY_SPACE, BORNO_KEY_SPACE}
     };
 
-    assert(sizeof(pairs) / sizeof(pairs[0]) == 48 && "Must test all 48 physical keys");
+    BORNO_CHECK(sizeof(pairs) / sizeof(pairs[0]) == 48 && "Must test all 48 physical keys");
 
     for (const auto& p : pairs) {
         uint32_t mapped = EvdevToBornoPhysicalKey(p.evdev);
-        assert(mapped == p.borno && "EvdevToBornoPhysicalKey failed for key");
-        
+        BORNO_CHECK(mapped == p.borno && "EvdevToBornoPhysicalKey failed for key");
+
         uint32_t xkb_mapped = XkbKeycodeToBornoPhysicalKey(p.evdev + 8);
-        assert(xkb_mapped == p.borno && "XkbKeycodeToBornoPhysicalKey failed for key");
+        BORNO_CHECK(xkb_mapped == p.borno && "XkbKeycodeToBornoPhysicalKey failed for key");
     }
 
     // Test non-character / out of range keys
-    assert(EvdevToBornoPhysicalKey(KEY_ESC) == BORNO_KEY_INVALID);
-    assert(EvdevToBornoPhysicalKey(KEY_LEFTCTRL) == BORNO_KEY_INVALID);
-    assert(EvdevToBornoPhysicalKey(KEY_F1) == BORNO_KEY_INVALID);
-    assert(XkbKeycodeToBornoPhysicalKey(0) == BORNO_KEY_INVALID);
-    assert(XkbKeycodeToBornoPhysicalKey(7) == BORNO_KEY_INVALID);
+    BORNO_CHECK(EvdevToBornoPhysicalKey(KEY_ESC) == BORNO_KEY_INVALID);
+    BORNO_CHECK(EvdevToBornoPhysicalKey(KEY_LEFTCTRL) == BORNO_KEY_INVALID);
+    BORNO_CHECK(EvdevToBornoPhysicalKey(KEY_F1) == BORNO_KEY_INVALID);
+    BORNO_CHECK(XkbKeycodeToBornoPhysicalKey(0) == BORNO_KEY_INVALID);
+    BORNO_CHECK(XkbKeycodeToBornoPhysicalKey(7) == BORNO_KEY_INVALID);
 
     std::cout << "    All 48 physical keys verified successfully.\n";
 }
@@ -100,33 +100,33 @@ void TestPhoneticKeySyms() {
     std::cout << "  Testing Phonetic KeySym conversion (case sensitivity & shifted punctuation)...\n";
 
     // Lowercase
-    assert(KeySymToPhoneticChar(FcitxKey_a) == 'a');
-    assert(KeySymToPhoneticChar(FcitxKey_m) == 'm');
-    assert(KeySymToPhoneticChar(FcitxKey_i) == 'i');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_a) == 'a');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_m) == 'm');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_i) == 'i');
 
     // Uppercase (must not be downcased!)
-    assert(KeySymToPhoneticChar(FcitxKey_T) == 'T');
-    assert(KeySymToPhoneticChar(FcitxKey_D) == 'D');
-    assert(KeySymToPhoneticChar(FcitxKey_R) == 'R');
-    assert(KeySymToPhoneticChar(FcitxKey_S) == 'S');
-    assert(KeySymToPhoneticChar(FcitxKey_Z) == 'Z');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_T) == 'T');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_D) == 'D');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_R) == 'R');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_S) == 'S');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_Z) == 'Z');
 
     // Shifted punctuation
-    assert(KeySymToPhoneticChar(FcitxKey_exclam) == '!');
-    assert(KeySymToPhoneticChar(FcitxKey_at) == '@');
-    assert(KeySymToPhoneticChar(FcitxKey_numbersign) == '#');
-    assert(KeySymToPhoneticChar(FcitxKey_dollar) == '$');
-    assert(KeySymToPhoneticChar(FcitxKey_percent) == '%');
-    assert(KeySymToPhoneticChar(FcitxKey_question) == '?');
-    assert(KeySymToPhoneticChar(FcitxKey_less) == '<');
-    assert(KeySymToPhoneticChar(FcitxKey_greater) == '>');
-    assert(KeySymToPhoneticChar(FcitxKey_asciitilde) == '~');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_exclam) == '!');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_at) == '@');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_numbersign) == '#');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_dollar) == '$');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_percent) == '%');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_question) == '?');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_less) == '<');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_greater) == '>');
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_asciitilde) == '~');
 
     // Non-printable control keys must return 0
-    assert(KeySymToPhoneticChar(FcitxKey_F12) == 0);
-    assert(KeySymToPhoneticChar(FcitxKey_Escape) == 0);
-    assert(KeySymToPhoneticChar(FcitxKey_Return) == 0);
-    assert(KeySymToPhoneticChar(FcitxKey_BackSpace) == 0);
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_F12) == 0);
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_Escape) == 0);
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_Return) == 0);
+    BORNO_CHECK(KeySymToPhoneticChar(FcitxKey_BackSpace) == 0);
 
     std::cout << "    Phonetic KeySyms verified successfully.\n";
 }
@@ -135,26 +135,26 @@ void TestModifiersAndShortcuts() {
     std::cout << "  Testing modifier extraction and accelerator shortcut filtering...\n";
 
     // Modifiers
-    assert(ExtractBornoModifiers(fcitx::KeyStates()) == 0);
-    assert(ExtractBornoModifiers(fcitx::KeyState::Shift) == BORNO_MOD_SHIFT);
-    assert(ExtractBornoModifiers(fcitx::KeyState::Mod5) == BORNO_MOD_ALTGR);
-    assert(ExtractBornoModifiers(fcitx::KeyState::Ctrl) == BORNO_MOD_CTRL);
-    assert(ExtractBornoModifiers(fcitx::KeyState::Alt) == BORNO_MOD_ALT);
-    assert(ExtractBornoModifiers(fcitx::KeyStates{fcitx::KeyState::Shift, fcitx::KeyState::Mod5}) == 
-           (BORNO_MOD_SHIFT | BORNO_MOD_ALTGR));
+    BORNO_CHECK(ExtractBornoModifiers(fcitx::KeyStates()) == 0);
+    BORNO_CHECK(ExtractBornoModifiers(fcitx::KeyState::Shift) == BORNO_MOD_SHIFT);
+    BORNO_CHECK(ExtractBornoModifiers(fcitx::KeyState::Mod5) == BORNO_MOD_ALTGR);
+    BORNO_CHECK(ExtractBornoModifiers(fcitx::KeyState::Ctrl) == BORNO_MOD_CTRL);
+    BORNO_CHECK(ExtractBornoModifiers(fcitx::KeyState::Alt) == BORNO_MOD_ALT);
+    BORNO_CHECK(ExtractBornoModifiers(fcitx::KeyStates{fcitx::KeyState::Shift, fcitx::KeyState::Mod5}) ==
+                (BORNO_MOD_SHIFT | BORNO_MOD_ALTGR));
 
     // Shortcuts: Ctrl, Alt, Super must be detected
-    assert(IsShortcutModifier(fcitx::KeyStates()) == false);
-    assert(IsShortcutModifier(fcitx::KeyState::Shift) == false);
-    assert(IsShortcutModifier(fcitx::KeyState::Ctrl) == true);
-    assert(IsShortcutModifier(fcitx::KeyState::Alt) == true);
-    assert(IsShortcutModifier(fcitx::KeyState::Super) == true);
-    assert(IsShortcutModifier(fcitx::KeyState::Super2) == true);
-    assert(IsShortcutModifier(fcitx::KeyStates{fcitx::KeyState::Ctrl, fcitx::KeyState::Shift}) == true);
+    BORNO_CHECK(IsShortcutModifier(fcitx::KeyStates()) == false);
+    BORNO_CHECK(IsShortcutModifier(fcitx::KeyState::Shift) == false);
+    BORNO_CHECK(IsShortcutModifier(fcitx::KeyState::Ctrl) == true);
+    BORNO_CHECK(IsShortcutModifier(fcitx::KeyState::Alt) == true);
+    BORNO_CHECK(IsShortcutModifier(fcitx::KeyState::Super) == true);
+    BORNO_CHECK(IsShortcutModifier(fcitx::KeyState::Super2) == true);
+    BORNO_CHECK(IsShortcutModifier(fcitx::KeyStates{fcitx::KeyState::Ctrl, fcitx::KeyState::Shift}) == true);
 
     // AltGr (Mod5) should NOT be filtered as a shortcut!
-    assert(IsShortcutModifier(fcitx::KeyState::Mod5) == false);
-    assert(IsShortcutModifier(fcitx::KeyStates{fcitx::KeyState::Shift, fcitx::KeyState::Mod5}) == false);
+    BORNO_CHECK(IsShortcutModifier(fcitx::KeyState::Mod5) == false);
+    BORNO_CHECK(IsShortcutModifier(fcitx::KeyStates{fcitx::KeyState::Shift, fcitx::KeyState::Mod5}) == false);
 
     std::cout << "    Modifiers and shortcuts verified successfully.\n";
 }

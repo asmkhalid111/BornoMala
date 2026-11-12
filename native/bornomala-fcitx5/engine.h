@@ -12,6 +12,8 @@
 #include <fcitx/inputpanel.h>
 #include <fcitx/instance.h>
 #include <fcitx/text.h>
+#include <fcitx-utils/trackableobject.h>
+#include "adapter_helpers.h"
 #include "bornomala.h"
 #include "key_mapper.h"
 #include "utf8_utils.h"
@@ -22,12 +24,17 @@ class BornoEngine;
 
 class BornoCandidateWord : public fcitx::CandidateWord {
 public:
-    BornoCandidateWord(fcitx::Text text, size_t index, BornoEngineHandle* engine, std::string comment = "");
+    BornoCandidateWord(
+        fcitx::Text text,
+        size_t index,
+        fcitx::TrackableObjectReference<fcitx::InputContextPropertyFactory> factoryRef,
+        std::string comment = ""
+    );
     void select(fcitx::InputContext* inputContext) const override;
 
 private:
     size_t m_index;
-    BornoEngineHandle* m_engine;
+    fcitx::TrackableObjectReference<fcitx::InputContextPropertyFactory> m_factoryRef;
 };
 
 class BornoContextProperty : public fcitx::InputContextProperty {
@@ -35,28 +42,19 @@ public:
     explicit BornoContextProperty(fcitx::InputContext* ic);
     ~BornoContextProperty() override;
 
-    BornoEngineHandle* engine() const { return m_engine; }
-    int32_t mode() const { return m_mode; }
-    void setMode(int32_t mode) { m_mode = mode; }
-    bool isComposing() const { return m_isComposing; }
-    void setComposing(bool composing) { m_isComposing = composing; }
-    size_t candidatesCount() const { return m_candidatesCount; }
-    void setCandidatesCount(size_t count) { m_candidatesCount = count; }
+    BornoEngineHandle* engine() const { return m_state.engine; }
+    int32_t mode() const { return m_state.mode; }
+    bool isComposing() const { return m_state.isComposing; }
+    size_t candidatesCount() const { return m_state.candidatesCount; }
+
+    BornoContextState& state() { return m_state; }
+    const BornoContextState& state() const { return m_state; }
 
     void syncFromState(const BornoStateC& state);
 
 private:
     fcitx::InputContext* m_ic;
-    BornoEngineHandle* m_engine{nullptr};
-    int32_t m_mode{BORNO_MODE_PHONETIC};
-    bool m_isComposing{false};
-    size_t m_candidatesCount{0};
-};
-
-struct LinuxConfigMetadata {
-    time_t lastMtime{0};
-    off_t fileSize{0};
-    uint32_t simpleHash{0};
+    BornoContextState m_state{};
 };
 
 class BornoEngine : public fcitx::InputMethodEngineV2 {
@@ -85,7 +83,6 @@ private:
     fcitx::Instance* m_instance;
     fcitx::FactoryFor<BornoContextProperty> m_factory;
     int32_t m_globalMode{BORNO_MODE_PHONETIC};
-    LinuxConfigMetadata m_configMeta{};
 };
 
 class BornoEngineFactory : public fcitx::AddonFactory {
