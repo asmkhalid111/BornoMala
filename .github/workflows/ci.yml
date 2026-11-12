@@ -39,3 +39,203 @@ jobs:
 
       - name: Run Typecheck and Vite Build
         run: npm run build
+
+  linux-fcitx5:
+    name: Linux Fcitx 5 Addon Build & Tests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Ubuntu Fcitx 5 build and test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            pkg-config \
+            libfcitx5core-dev \
+            libfcitx5config-dev \
+            libfcitx5utils-dev \
+            python3 \
+            file
+
+      - name: Record runner and Fcitx 5 package versions
+        run: |
+          lsb_release -a
+          uname -a
+          cmake --version | head -n 1
+          g++ --version | head -n 1
+          python3 --version
+          pkg-config --modversion Fcitx5Core Fcitx5Config Fcitx5Utils
+          dpkg-query -W -f='${Package}=${Version}\n' \
+            build-essential cmake pkg-config \
+            libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev python3
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache Cargo registry and Linux build target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ${{ runner.temp }}/bornomala-cargo
+          key: ${{ runner.os }}-fcitx5-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-fcitx5-cargo-
+
+      - name: Run Rust core library tests on Linux
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/bornomala-cargo
+        run: |
+          cargo test -p bornomala-core
+          cargo test -p bornomala-core --test ffi_tests
+
+      - name: Build PIC Rust core static library
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/bornomala-cargo
+          RUSTFLAGS: -C relocation-model=pic
+        run: |
+          cargo build --release -p bornomala-core
+          test -s "${CARGO_TARGET_DIR}/release/libbornomala_core.a"
+
+      - name: Configure and build Fcitx 5 addon (Release with NDEBUG preserved)
+        run: |
+          cmake -S native/bornomala-fcitx5 \
+                -B "${{ runner.temp }}/bornomala-fcitx5-build" \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DBORNOMALA_CORE_STATIC="${{ runner.temp }}/bornomala-cargo/release/libbornomala_core.a"
+          cmake --build "${{ runner.temp }}/bornomala-fcitx5-build" --parallel 2>&1 | tee "${{ runner.temp }}/cmake-build.log"
+          echo "=== Compiler Warnings Summary ==="
+          grep -E '(^| )warning:' "${{ runner.temp }}/cmake-build.log" || echo "Zero compiler warnings."
+          file "${{ runner.temp }}/bornomala-fcitx5-build/bornomala.so" | grep -q "shared object"
+          for bin in test_c_linkage test_key_mapper test_engine_adapter test_canary; do
+            test -x "${{ runner.temp }}/bornomala-fcitx5-build/${bin}"
+          done
+
+      - name: Run Release CTest suite and verify negative CanaryTest behavior
+        run: |
+          ctest --test-dir "${{ runner.temp }}/bornomala-fcitx5-build" --output-on-failure
+
+          set +e
+          BORNO_TEST_CANARY=1 ctest --test-dir "${{ runner.temp }}/bornomala-fcitx5-build" \
+            -R '^CanaryTest$' --output-on-failure > "${{ runner.temp }}/canary.log" 2>&1
+          CANARY_RC=$?
+          set -e
+          cat "${{ runner.temp }}/canary.log"
+          if [ "$CANARY_RC" -eq 0 ]; then
+            echo "ERROR: BORNO_TEST_CANARY=1 unexpectedly passed." >&2
+            exit 1
+          fi
+          if ! grep -q "Intentional BORNO_TEST_CANARY=1 verification failure" "${{ runner.temp }}/canary.log"; then
+            echo "ERROR: CanaryTest failed without the expected canary diagnostic." >&2
+            exit 1
+          fi
+
+          ctest --test-dir "${{ runner.temp }}/bornomala-fcitx5-build" --output-on-failure
+
+      - name: Verify staged DESTDIR installation
+        run: |
+          rm -rf "${{ runner.temp }}/bornomala-stage"
+          DESTDIR="${{ runner.temp }}/bornomala-stage" cmake --install "${{ runner.temp }}/bornomala-fcitx5-build"
+          find "${{ runner.temp }}/bornomala-stage" -type f | sort
+          test -s "${{ runner.temp }}/bornomala-stage/usr/local/lib/fcitx5/bornomala.so"
+          test -s "${{ runner.temp }}/bornomala-stage/usr/local/share/fcitx5/addon/bornomala.conf"
+          test -s "${{ runner.temp }}/bornomala-stage/usr/local/share/fcitx5/inputmethod/bornomala.conf"
+          test -s "${{ runner.temp }}/bornomala-stage/usr/local/share/icons/hicolor/64x64/apps/bornomala.png"
+          test -s "${{ runner.temp }}/bornomala-stage/usr/local/share/doc/bornomala/THIRD-PARTY-NOTICES.md"
+
+      - name: Run static privacy scan on bornomala.so
+        run: |
+          python3 -B - "${{ runner.temp }}/bornomala-fcitx5-build/bornomala.so" << 'PYEOF'
+          import sys
+          data = open(sys.argv[1], "rb").read()
+          forbidden = [b"sym=0x", b"preedit=", b"committed="]
+          found = [pat.decode("ascii") for pat in forbidden if pat in data]
+          if found:
+              print(f"Privacy scan FAILED: found forbidden patterns {found}", file=sys.stderr)
+              sys.exit(1)
+          print("Static privacy scan PASSED (0 matches for sym=0x, preedit=, committed=).")
+          PYEOF
+
+      - name: Run WP2 installer, uninstaller, and GUI harness safety tests
+        run: |
+          python3 -B -m unittest discover -s native/bornomala-fcitx5/tests -p 'test_scripts.py' -v
+
+      - name: Verify GUI runners report UNAVAILABLE (exit 77) in headless CI
+        run: |
+          for cmd in \
+            "python3 -B native/bornomala-fcitx5/tests/verify_gtk3.py --build-dir ${{ runner.temp }}/bornomala-fcitx5-build" \
+            "python3 -B native/bornomala-fcitx5/tests/verify_gedit.py --build-dir ${{ runner.temp }}/bornomala-fcitx5-build" \
+            "bash native/bornomala-fcitx5/scripts/launch_test_editor.sh --build-dir ${{ runner.temp }}/bornomala-fcitx5-build"
+          do
+            set +e
+            OUT=$(DISPLAY="" eval "$cmd" 2>&1)
+            RC=$?
+            set -e
+            echo "Command [$cmd] -> exit=$RC"
+            echo "$OUT"
+            if [ "$RC" -ne 77 ] || ! printf '%s' "$OUT" | grep -q "RESULT=UNAVAILABLE"; then
+              echo "ERROR: Expected exit 77 and RESULT=UNAVAILABLE in headless CI." >&2
+              exit 1
+            fi
+          done
+
+      - name: End-to-end installer build-from-source and uninstaller test in isolated HOME
+        run: |
+          set -euo pipefail
+          ORIG_HOME="$HOME"
+          export RUSTUP_HOME="${RUSTUP_HOME:-$ORIG_HOME/.rustup}"
+          export CARGO_HOME="${CARGO_HOME:-$ORIG_HOME/.cargo}"
+
+          TMP_E2E="$(mktemp -d "${{ runner.temp }}/bornomala-e2e-XXXXXX")"
+          trap 'rm -rf -- "$TMP_E2E"' EXIT
+
+          export HOME="$TMP_E2E/home"
+          export XDG_CONFIG_HOME="$HOME/.config"
+          export XDG_DATA_HOME="$HOME/.local/share"
+          export XDG_CACHE_HOME="$HOME/.cache"
+          export CARGO_TARGET_DIR="$TMP_E2E/cargo"
+          export RUSTFLAGS="-C relocation-model=pic"
+          E2E_BUILD="$TMP_E2E/fcitx5-build"
+
+          mkdir -p "$XDG_CONFIG_HOME/fcitx5" "$HOME/.local/lib/fcitx5" "$XDG_DATA_HOME/fcitx5/addon"
+          printf '[Groups/0]\nName=Default\nDefault Layout=us\nDefaultIM=keyboard-us\n' > "$TMP_E2E/profile.sentinel"
+          cp "$TMP_E2E/profile.sentinel" "$XDG_CONFIG_HOME/fcitx5/profile"
+          printf 'UNRELATED_SO' > "$HOME/.local/lib/fcitx5/unrelated.so"
+          printf 'UNRELATED_CONF' > "$XDG_DATA_HOME/fcitx5/addon/unrelated.conf"
+
+          bash native/bornomala-fcitx5/scripts/install.sh --build-dir "$E2E_BUILD"
+          file "$HOME/.local/lib/fcitx5/bornomala.so" | grep -q "shared object"
+          test -s "$HOME/.local/lib/fcitx5/bornomala.so"
+          test -s "$XDG_DATA_HOME/fcitx5/addon/bornomala.conf"
+          test -s "$XDG_DATA_HOME/fcitx5/inputmethod/bornomala.conf"
+          test -s "$XDG_DATA_HOME/icons/hicolor/64x64/apps/bornomala.png"
+          test -s "$XDG_DATA_HOME/doc/bornomala/THIRD-PARTY-NOTICES.md"
+          test -s "$XDG_DATA_HOME/doc/bornomala/install-manifest.txt"
+          cmp -s "$TMP_E2E/profile.sentinel" "$XDG_CONFIG_HOME/fcitx5/profile"
+          [ "$(cat "$HOME/.local/lib/fcitx5/unrelated.so")" = "UNRELATED_SO" ]
+          [ "$(cat "$XDG_DATA_HOME/fcitx5/addon/unrelated.conf")" = "UNRELATED_CONF" ]
+
+          bash native/bornomala-fcitx5/scripts/install.sh --build-dir "$E2E_BUILD" | grep -q "\[unchanged\]"
+          bash native/bornomala-fcitx5/scripts/uninstall.sh --dry-run
+          test -s "$HOME/.local/lib/fcitx5/bornomala.so"
+
+          bash native/bornomala-fcitx5/scripts/uninstall.sh --yes
+          test ! -e "$HOME/.local/lib/fcitx5/bornomala.so"
+          test ! -e "$XDG_DATA_HOME/fcitx5/addon/bornomala.conf"
+          test ! -e "$XDG_DATA_HOME/fcitx5/inputmethod/bornomala.conf"
+          test ! -e "$XDG_DATA_HOME/icons/hicolor/64x64/apps/bornomala.png"
+          test ! -e "$XDG_DATA_HOME/doc/bornomala"
+          cmp -s "$TMP_E2E/profile.sentinel" "$XDG_CONFIG_HOME/fcitx5/profile"
+          [ "$(cat "$HOME/.local/lib/fcitx5/unrelated.so")" = "UNRELATED_SO" ]
+          [ "$(cat "$XDG_DATA_HOME/fcitx5/addon/unrelated.conf")" = "UNRELATED_CONF" ]
+
+          bash native/bornomala-fcitx5/scripts/uninstall.sh --yes
+          test ! -e "$ORIG_HOME/.local/lib/fcitx5/bornomala.so"
+          test ! -e "$ORIG_HOME/.config/fcitx5/profile"
