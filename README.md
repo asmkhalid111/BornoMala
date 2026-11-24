@@ -68,7 +68,7 @@ All typing rules, layout mappings, Unicode normalization, dictionary ranking, an
 </p>
 
 - Detailed system overview: [System Architecture](docs/architecture.md)
-- Configuration, validation, and atomic persistence flow: [Configuration Architecture](docs/visual-feature-guide.md#configuration--persistence-architecture)
+- Configuration, validation, and atomic persistence flow: [Configuration Architecture](docs/visual-feature-guide.md#5-configuration--persistence-architecture)
 
 ---
 
