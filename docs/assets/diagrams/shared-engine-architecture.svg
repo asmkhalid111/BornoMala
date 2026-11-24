@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" width="960" height="540" role="img" aria-labelledby="title desc">
+  <title id="title">BornoMala Shared Engine Architecture</title>
+  <desc id="desc">Modular architecture showing Windows TSF adapter, Linux Fcitx 5 adapter, and Tauri Desktop Sandbox communicating over C-ABI and Rust FFI/IPC with the shared bornomala-core Rust engine.</desc>
+  <defs>
+    <marker id="arrow-cyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8.5 5 L 0 8.5 z" fill="#38bdf8"/>
+    </marker>
+    <marker id="arrow-emerald" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8.5 5 L 0 8.5 z" fill="#10b981"/>
+    </marker>
+    <marker id="arrow-indigo" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8.5 5 L 0 8.5 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- Self-contained dark-slate canvas (readable on both GitHub Light & Dark themes) -->
+  <rect x="0" y="0" width="960" height="540" rx="14" fill="#0f172a"/>
+  <rect x="1" y="1" width="958" height="538" rx="13" fill="none" stroke="#334155" stroke-width="1.5"/>
+
+  <!-- Header -->
+  <rect x="0" y="0" width="960" height="4" rx="2" fill="#38bdf8"/>
+  <text x="32" y="40" fill="#f8fafc" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="20" font-weight="700">BornoMala — Shared Engine &amp; Platform Adapter Architecture</text>
+  <text x="32" y="62" fill="#94a3b8" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12.5">Offline-first Bangla input platform decoupling OS/GUI adapters from pure-Rust language logic</text>
+
+  <!-- Tier 1: Platform Adapters & Desktop Sandbox -->
+  <!-- Card 1: Windows TSF -->
+  <g transform="translate(32, 86)">
+    <rect width="282" height="178" rx="10" fill="#111827" stroke="#334155" stroke-width="1.2"/>
+    <rect x="0" y="0" width="282" height="4" rx="2" fill="#10b981"/>
+    <text x="16" y="28" fill="#f8fafc" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="14.5" font-weight="700">Windows Native TSF IME</text>
+    <text x="16" y="46" fill="#34d399" font-family="ui-monospace, Consolas, monospace" font-size="11">native/borno-tsf/ • bornomala_tsf.dll</text>
+    <line x1="16" y1="58" x2="266" y2="58" stroke="#1e293b" stroke-width="1"/>
+    <text x="16" y="78" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12">• In-process COM Text Service (C++)</text>
+    <text x="16" y="98" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12">• ITfKeyEventSink &amp; inline preedit</text>
+    <text x="16" y="118" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12">• Floating GDI candidate UI &amp; LangBar</text>
+    <rect x="16" y="138" width="250" height="24" rx="5" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+    <text x="26" y="154" fill="#fbbf24" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="10.8" font-weight="600">Status: M7 verified; post-M9 COM retest pending</text>
+  </g>
+
+  <!-- Card 2: Linux Fcitx 5 -->
+  <g transform="translate(339, 86)">
+    <rect width="282" height="178" rx="10" fill="#111827" stroke="#334155" stroke-width="1.2"/>
+    <rect x="0" y="0" width="282" height="4" rx="2" fill="#10b981"/>
+    <text x="16" y="28" fill="#f8fafc" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="14.5" font-weight="700">Linux Native Fcitx 5 Addon</text>
+    <text x="16" y="46" fill="#34d399" font-family="ui-monospace, Consolas, monospace" font-size="11">native/bornomala-fcitx5/ • bornomala.so</text>
+    <line x1="16" y1="58" x2="266" y2="58" stroke="#1e293b" stroke-width="1"/>
+    <text x="16" y="78" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12">• C++20 InputMethodEngineV2 addon</text>
+    <text x="16" y="98" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12">• Preedit underline &amp; UTF-8 cursor</text>
+    <text x="16" y="118" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12">• Per-context mode sync &amp; XDG reload</text>
+    <rect x="16" y="138" width="250" height="24" rx="5" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+    <text x="26" y="154" fill="#fbbf24" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="10.8" font-weight="600">Status: WSL2/WSLg XWayland partially verified</text>
+  </g>
+
+  <!-- Card 3: Desktop Sandbox -->
+  <g transform="translate(646, 86)">
+    <rect width="282" height="178" rx="10" fill="#111827" stroke="#334155" stroke-width="1.2"/>
+    <rect x="0" y="0" width="282" height="4" rx="2" fill="#818cf8"/>
+    <text x="16" y="28" fill="#f8fafc" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="14.5" font-weight="700">Desktop Sandbox &amp; Settings</text>
+    <text x="16" y="46" fill="#a5b4fc" font-family="ui-monospace, Consolas, monospace" font-size="11">src-tauri/ + src/ • Tauri v2 + React 18</text>
+    <line x1="16" y1="58" x2="266" y2="58" stroke="#1e293b" stroke-width="1"/>
+    <text x="16" y="78" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12">• Interactive typing &amp; candidate preview</text>
+    <text x="16" y="98" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12">• Virtual keyboard &amp; event inspector</text>
+    <text x="16" y="118" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12">• Settings drawer &amp; config persistence</text>
+    <rect x="16" y="138" width="250" height="24" rx="5" fill="#064e3b" stroke="#10b981" stroke-width="1"/>
+    <text x="26" y="154" fill="#6ee7b7" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="10.8" font-weight="600">Status: Primary Windows sandbox verified</text>
+  </g>
+
+  <!-- Integration Boundary Connectors -->
+  <line x1="173" y1="264" x2="173" y2="322" stroke="#10b981" stroke-width="2" marker-end="url(#arrow-emerald)" marker-start="url(#arrow-emerald)"/>
+  <line x1="480" y1="264" x2="480" y2="322" stroke="#10b981" stroke-width="2" marker-end="url(#arrow-emerald)" marker-start="url(#arrow-emerald)"/>
+  <line x1="787" y1="264" x2="787" y2="322" stroke="#818cf8" stroke-width="2" marker-end="url(#arrow-indigo)" marker-start="url(#arrow-indigo)"/>
+
+  <!-- Boundary Badges -->
+  <rect x="200" y="282" width="254" height="24" rx="6" fill="#0f172a" stroke="#10b981" stroke-width="1.2"/>
+  <text x="327" y="298" text-anchor="middle" fill="#6ee7b7" font-family="ui-monospace, Consolas, monospace" font-size="11" font-weight="600">C-ABI Boundary (bornomala.h / ffi.rs)</text>
+
+  <rect x="668" y="282" width="238" height="24" rx="6" fill="#0f172a" stroke="#818cf8" stroke-width="1.2"/>
+  <text x="787" y="298" text-anchor="middle" fill="#c7d2fe" font-family="ui-monospace, Consolas, monospace" font-size="11" font-weight="600">Tauri IPC + Direct Rust API</text>
+
+  <!-- Tier 2: Shared Rust Core -->
+  <g transform="translate(32, 328)">
+    <rect width="896" height="180" rx="12" fill="#111827" stroke="#38bdf8" stroke-width="1.6"/>
+    <rect x="0" y="0" width="896" height="5" rx="2" fill="#38bdf8"/>
+    <text x="20" y="32" fill="#f8fafc" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="700">Shared Core Engine — bornomala-core (Rust)</text>
+    <text x="530" y="31" fill="#38bdf8" font-family="ui-monospace, Consolas, monospace" font-size="11.5">crates/bornomala-core/src/ • Zero GUI or OS dependencies</text>
+
+    <!-- Five Internal Modules -->
+    <g transform="translate(20, 50)">
+      <rect width="164" height="108" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+      <text x="12" y="24" fill="#38bdf8" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12.5" font-weight="700">State Machine</text>
+      <text x="12" y="41" fill="#94a3b8" font-family="ui-monospace, Consolas, monospace" font-size="10.5">lib.rs</text>
+      <text x="12" y="62" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">• BornoEngine</text>
+      <text x="12" y="79" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">• EngineEvent dispatch</text>
+      <text x="12" y="96" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">• Preedit &amp; commit</text>
+    </g>
+
+    <g transform="translate(193, 50)">
+      <rect width="164" height="108" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+      <text x="12" y="24" fill="#38bdf8" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12.5" font-weight="700">Phonetic Engine</text>
+      <text x="12" y="41" fill="#94a3b8" font-family="ui-monospace, Consolas, monospace" font-size="10.5">translit.rs / phonetic.rs</text>
+      <text x="12" y="62" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">• Avro-compatible rules</text>
+      <text x="12" y="79" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">• Conjunct matrix</text>
+      <text x="12" y="96" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">• Candidate ranking</text>
+    </g>
+
+    <g transform="translate(366, 50)">
+      <rect width="164" height="108" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+      <text x="12" y="24" fill="#38bdf8" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12.5" font-weight="700">Fixed Layouts</text>
+      <text x="12" y="41" fill="#94a3b8" font-family="ui-monospace, Consolas, monospace" font-size="10.5">layout.rs</text>
+      <text x="12" y="62" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">• National (Jatiyo)</text>
+      <text x="12" y="79" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">• Probhat</text>
+      <text x="12" y="96" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">• Bijoy (Unicode NFC)</text>
+    </g>
+
+    <g transform="translate(539, 50)">
+      <rect width="164" height="108" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+      <text x="12" y="24" fill="#38bdf8" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12.5" font-weight="700">Unicode &amp; Dict</text>
+      <text x="12" y="41" fill="#94a3b8" font-family="ui-monospace, Consolas, monospace" font-size="10.5">unicode.rs / dictionary.rs</text>
+      <text x="12" y="62" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">• Canonical NFC</text>
+      <text x="12" y="79" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">• ZWJ / ZWNJ safety</text>
+      <text x="12" y="96" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">• Offline Trie + Typo</text>
+    </g>
+
+    <g transform="translate(712, 50)">
+      <rect width="164" height="108" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+      <text x="12" y="24" fill="#38bdf8" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12.5" font-weight="700">Config &amp; C-ABI</text>
+      <text x="12" y="41" fill="#94a3b8" font-family="ui-monospace, Consolas, monospace" font-size="10.5">config.rs / ffi.rs</text>
+      <text x="12" y="62" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">• BornoConfig v1.2.0</text>
+      <text x="12" y="79" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">• Semantic validation</text>
+      <text x="12" y="96" fill="#cbd5e1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">• C-ABI exports</text>
+    </g>
+  </g>
+</svg>
