@@ -222,7 +222,11 @@ jobs:
           [ "$(cat "$HOME/.local/lib/fcitx5/unrelated.so")" = "UNRELATED_SO" ]
           [ "$(cat "$XDG_DATA_HOME/fcitx5/addon/unrelated.conf")" = "UNRELATED_CONF" ]
 
-          bash native/bornomala-fcitx5/scripts/install.sh --build-dir "$E2E_BUILD" | grep -q "\[unchanged\]"
+          REINSTALL_LOG="$TMP_E2E/reinstall.log"
+          bash native/bornomala-fcitx5/scripts/install.sh \
+            --build-dir "$E2E_BUILD" > "$REINSTALL_LOG" 2>&1
+          cat "$REINSTALL_LOG"
+          grep -q "\[unchanged\]" "$REINSTALL_LOG"
           bash native/bornomala-fcitx5/scripts/uninstall.sh --dry-run
           test -s "$HOME/.local/lib/fcitx5/bornomala.so"
 
