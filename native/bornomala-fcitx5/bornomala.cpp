@@ -103,8 +103,15 @@ BornoCandidateWord::BornoCandidateWord(
     : fcitx::CandidateWord(std::move(text)),
       m_index(index),
       m_factoryRef(std::move(factoryRef)) {
+    // Fcitx 5.1.7 provides neither comment() nor setComment() (introduced in 5.1.9).
+    // Use a dependent C++20 requires-expression so older Fcitx builds skip comments cleanly
+    // while 5.1.9+ retains full candidate kind annotations.
     if (!comment.empty()) {
-        setComment(fcitx::Text(std::move(comment)));
+        [&](auto& self) {
+            if constexpr (requires { self.setComment(fcitx::Text{}); }) {
+                self.setComment(fcitx::Text(std::move(comment)));
+            }
+        }(*this);
     }
 }
 
@@ -511,4 +518,14 @@ std::string BornoEngine::subModeIconImpl(const fcitx::InputMethodEntry& entry, f
 
 } // namespace bornomala
 
-FCITX_ADDON_FACTORY_V2_BACKWARDS(bornomala, bornomala::BornoEngineFactory)
+// Factory macros are defined in <fcitx/addoninstance.h>.
+// FCITX_ADDON_FACTORY_V2_BACKWARDS was added after 5.1.7; fall back to FCITX_ADDON_FACTORY on 5.1.7.
+#ifdef FCITX_ADDON_FACTORY_V2_BACKWARDS
+FCITX_ADDON_FACTORY_V2_BACKWARDS(
+    bornomala, bornomala::BornoEngineFactory
+)
+#else
+FCITX_ADDON_FACTORY(
+    bornomala::BornoEngineFactory
+)
+#endif
